@@ -8,7 +8,8 @@ pipeline {
                     sh 'chmod +x mvnw && ./mvnw checkstyle:check'
                 }
                 dir('frontend') {
-                    sh 'npm install && npm run lint'
+                    // Run frontend linting inside a Node Docker container since the host agent lacks npm
+                    sh 'docker run --rm --volumes-from jenkins -w ${WORKSPACE}/frontend node:20 sh -c "npm install && npm run lint"'
                 }
             }
         }
