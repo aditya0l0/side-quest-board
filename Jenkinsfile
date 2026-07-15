@@ -88,8 +88,8 @@ pipeline {
                             docker run --rm \\
                                 --name lint-backend-${BUILD_NUMBER} \\
                                 --network ${env.PIPELINE_NETWORK} \\
-                                -v "${WORKSPACE}/backend":/workspace/backend:ro \\
-                                -w /workspace/backend \\
+                                --volumes-from jenkins \\
+                                -w ${WORKSPACE}/backend \\
                                 maven:3.9.7-eclipse-temurin-17 \\
                                 mvn --no-transfer-progress checkstyle:check
                         """
@@ -103,8 +103,8 @@ pipeline {
                             docker run --rm \\
                                 --name lint-frontend-${BUILD_NUMBER} \\
                                 --network ${env.PIPELINE_NETWORK} \\
-                                -v "${WORKSPACE}/frontend":/workspace/frontend \\
-                                -w /workspace/frontend \\
+                                --volumes-from jenkins \\
+                                -w ${WORKSPACE}/frontend \\
                                 node:20-alpine \\
                                 sh -c "npm ci --prefer-offline && npm run lint"
                         """
@@ -150,8 +150,8 @@ pipeline {
                         docker run --rm \\
                             --name test-backend-${BUILD_NUMBER} \\
                             --network ${env.PIPELINE_NETWORK} \\
-                            -v "${WORKSPACE}/backend":/workspace/backend \\
-                            -w /workspace/backend \\
+                            --volumes-from jenkins \\
+                            -w ${WORKSPACE}/backend \\
                             -e SPRING_DATASOURCE_URL="jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1" \\
                             -e SPRING_DATASOURCE_DRIVER_CLASS_NAME="org.h2.Driver" \\
                             -e SPRING_JPA_DATABASE_PLATFORM="org.hibernate.dialect.H2Dialect" \\
@@ -166,8 +166,8 @@ pipeline {
                         docker run --rm \\
                             --name test-frontend-${BUILD_NUMBER} \\
                             --network ${env.PIPELINE_NETWORK} \\
-                            -v "${WORKSPACE}/frontend":/workspace/frontend \\
-                            -w /workspace/frontend \\
+                            --volumes-from jenkins \\
+                            -w ${WORKSPACE}/frontend \\
                             node:20-alpine \\
                             sh -c "npm ci --prefer-offline && npm test -- --run"
                     """
@@ -222,8 +222,8 @@ pipeline {
                                 --name build-worker-${BUILD_NUMBER} \\
                                 --network ${env.PIPELINE_NETWORK} \\
                                 -v /var/run/docker.sock:/var/run/docker.sock \\
-                                -v "${WORKSPACE}":/workspace \\
-                                -w /workspace \\
+                                --volumes-from jenkins \\
+                                -w ${WORKSPACE} \\
                                 docker:27-cli \\
                                 sh -c "
                                     echo '=== Building backend Docker image ==='
