@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 
 /**
  * Floating toast notification for XP earned on quest completion.

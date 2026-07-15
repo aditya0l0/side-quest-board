@@ -1,135 +1,147 @@
 package com.sidequest.board.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
  * A single side-quest on the board.
  *
- * XP is derived server-side from the quest's {@link Difficulty} and is
- * never settable by the client. The quest locks for edits once it
- * reaches {@link QuestStatus#COMPLETED}.
+ * <p>XP is derived server-side from the quest's {@link Difficulty} and is never settable by the
+ * client. The quest locks for edits once it reaches {@link QuestStatus#COMPLETED}.
  */
 @Entity
-@Table(name = "quest", indexes = {
-    @Index(name = "idx_quest_date_status", columnList = "questDate, status")
-})
+@Table(
+    name = "quest",
+    indexes = {@Index(name = "idx_quest_date_status", columnList = "questDate, status")})
 public class Quest {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @Column(nullable = false, length = 120)
-    private String title;
+  @Column(nullable = false, length = 120)
+  private String title;
 
-    @Column(length = 500)
-    private String description;
+  @Column(length = 500)
+  private String description;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
-    private Difficulty difficulty;
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false, length = 10)
+  private Difficulty difficulty;
 
-    @Column(nullable = false)
-    private Integer xpValue;
+  @Column(nullable = false)
+  private Integer xpValue;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 15)
-    private QuestStatus status;
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false, length = 15)
+  private QuestStatus status;
 
-    @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+  @Column(nullable = false, updatable = false)
+  private LocalDateTime createdAt;
 
-    private LocalDateTime completedAt;
+  private LocalDateTime completedAt;
 
-    @Column(nullable = false)
-    private LocalDate questDate;
+  @Column(nullable = false)
+  private LocalDate questDate;
 
-    // ── Lifecycle callbacks ─────────────────────────────
+  // ── Lifecycle callbacks ─────────────────────────────
 
-    @PrePersist
-    public void onPrePersist() {
-        this.createdAt = LocalDateTime.now();
-        if (this.questDate == null) {
-            this.questDate = LocalDate.now();
-        }
-        if (this.status == null) {
-            this.status = QuestStatus.ACTIVE;
-        }
-        this.xpValue = this.difficulty.getXpValue();
+  /**
+   * Initialises default values for {@code createdAt}, {@code questDate}, {@code status}, and {@code
+   * xpValue} before first persist.
+   */
+  @PrePersist
+  public void onPrePersist() {
+    this.createdAt = LocalDateTime.now();
+    if (this.questDate == null) {
+      this.questDate = LocalDate.now();
     }
-
-    // ── Getters & Setters ───────────────────────────────
-
-    public Long getId() {
-        return id;
+    if (this.status == null) {
+      this.status = QuestStatus.ACTIVE;
     }
+    this.xpValue = this.difficulty.getXpValue();
+  }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
+  // ── Getters & Setters ───────────────────────────────
 
-    public String getTitle() {
-        return title;
-    }
+  public Long getId() {
+    return id;
+  }
 
-    public void setTitle(String title) {
-        this.title = title;
-    }
+  public void setId(Long id) {
+    this.id = id;
+  }
 
-    public String getDescription() {
-        return description;
-    }
+  public String getTitle() {
+    return title;
+  }
 
-    public void setDescription(String description) {
-        this.description = description;
-    }
+  public void setTitle(String title) {
+    this.title = title;
+  }
 
-    public Difficulty getDifficulty() {
-        return difficulty;
-    }
+  public String getDescription() {
+    return description;
+  }
 
-    public void setDifficulty(Difficulty difficulty) {
-        this.difficulty = difficulty;
-        this.xpValue = difficulty.getXpValue();
-    }
+  public void setDescription(String description) {
+    this.description = description;
+  }
 
-    public Integer getXpValue() {
-        return xpValue;
-    }
+  public Difficulty getDifficulty() {
+    return difficulty;
+  }
 
-    // No public setter for xpValue — always derived from difficulty
+  public void setDifficulty(Difficulty difficulty) {
+    this.difficulty = difficulty;
+    this.xpValue = difficulty.getXpValue();
+  }
 
-    public QuestStatus getStatus() {
-        return status;
-    }
+  public Integer getXpValue() {
+    return xpValue;
+  }
 
-    public void setStatus(QuestStatus status) {
-        this.status = status;
-    }
+  // No public setter for xpValue — always derived from difficulty
 
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
+  public QuestStatus getStatus() {
+    return status;
+  }
 
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
+  public void setStatus(QuestStatus status) {
+    this.status = status;
+  }
 
-    public LocalDateTime getCompletedAt() {
-        return completedAt;
-    }
+  public LocalDateTime getCreatedAt() {
+    return createdAt;
+  }
 
-    public void setCompletedAt(LocalDateTime completedAt) {
-        this.completedAt = completedAt;
-    }
+  public void setCreatedAt(LocalDateTime createdAt) {
+    this.createdAt = createdAt;
+  }
 
-    public LocalDate getQuestDate() {
-        return questDate;
-    }
+  public LocalDateTime getCompletedAt() {
+    return completedAt;
+  }
 
-    public void setQuestDate(LocalDate questDate) {
-        this.questDate = questDate;
-    }
+  public void setCompletedAt(LocalDateTime completedAt) {
+    this.completedAt = completedAt;
+  }
+
+  public LocalDate getQuestDate() {
+    return questDate;
+  }
+
+  public void setQuestDate(LocalDate questDate) {
+    this.questDate = questDate;
+  }
 }
