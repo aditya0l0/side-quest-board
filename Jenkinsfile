@@ -11,5 +11,12 @@ pipeline {
                 }
             }
         }
+        stage('Deploy Local (Docker Compose)') {
+            steps {
+                // Stop existing containers and start new ones with updated builds
+                sh 'docker compose down'
+                sh 'docker compose up -d --build'
+            }
+        }
     }
 }
