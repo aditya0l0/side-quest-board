@@ -1,0 +1,97 @@
+/*
+ * DOWNSTREAM JOB: sidequest-test
+ *
+ * Triggered by:  sidequest-master  (Jenkinsfile)  — only when lint PASSED
+ * Script Path:   Jenkinsfile.test
+ *
+ * Runs the Spring Boot backend unit tests (Maven/H2 in-memory DB) and the
+ * React frontend unit tests (Vitest) inside isolated Docker worker containers.
+ *
+ * Test failures set the build to UNSTABLE (not FAILURE) so that the master
+ * can still proceed to the Build job — matching the original pipeline behaviour.
+ *
+ * Parameters (injected by master):
+ *   UPSTREAM_BUILD_NUMBER  – the master's BUILD_NUMBER
+ *   PIPELINE_NETWORK       – the Docker bridge network created by the master
+ */
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 15, unit: 'MINUTES')
+    }
+
+    parameters {
+        string(
+            name: 'UPSTREAM_BUILD_NUMBER',
+            defaultValue: '',
+            description: 'BUILD_NUMBER of the upstream sidequest-master job'
+        )
+        string(
+            name: 'PIPELINE_NETWORK',
+            defaultValue: '',
+            description: 'Isolated Docker bridge network created by the master'
+        )
+    }
+
+    stages {
+        stage('Test Backend') {
+            steps {
+                echo "=== [TEST] Running backend unit tests (upstream build #${params.UPSTREAM_BUILD_NUMBER}) ==="
+                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                    sh """
+                        docker run --rm \\
+                            --name test-backend-${params.UPSTREAM_BUILD_NUMBER} \\
+                            --network ${params.PIPELINE_NETWORK} \\
+                            --volumes-from jenkins \\
+                            -w ${WORKSPACE}/backend \\
+                            -e SPRING_DATASOURCE_URL="jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1" \\
+                            -e SPRING_DATASOURCE_DRIVER_CLASS_NAME="org.h2.Driver" \\
+                            -e SPRING_JPA_DATABASE_PLATFORM="org.hibernate.dialect.H2Dialect" \\
+                            maven:3.9.7-eclipse-temurin-17 \\
+                            mvn --no-transfer-progress test
+                    """
+                }
+            }
+        }
+
+        stage('Test Frontend') {
+            steps {
+                echo "=== [TEST] Running frontend unit tests (upstream build #${params.UPSTREAM_BUILD_NUMBER}) ==="
+                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                    sh """
+                        docker run --rm \\
+                            --name test-frontend-${params.UPSTREAM_BUILD_NUMBER} \\
+                            --network ${params.PIPELINE_NETWORK} \\
+                            --volumes-from jenkins \\
+                            -w ${WORKSPACE}/frontend \\
+                            node:20-alpine \\
+                            sh -c "npm ci --prefer-offline && npm test -- --run"
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Publish JUnit results so the downstream job's test report
+            // is visible in its own build page.
+            junit(
+                testResults: 'backend/target/surefire-reports/*.xml',
+                allowEmptyResults: true
+            )
+        }
+        success {
+            echo "=== [TEST] All tests PASSED — reporting SUCCESS to master ==="
+        }
+        unstable {
+            echo "=== [TEST] Tests FAILED — reporting UNSTABLE to master (Build will still run) ==="
+        }
+        failure {
+            echo "=== [TEST] Test stage FAILED — reporting FAILURE to master (Build will be SKIPPED) ==="
+        }
+    }
+}

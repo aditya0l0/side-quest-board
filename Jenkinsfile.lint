@@ -1,0 +1,79 @@
+/*
+ * DOWNSTREAM JOB: sidequest-lint
+ *
+ * Triggered by:  sidequest-master  (Jenkinsfile)
+ * Script Path:   Jenkinsfile.lint
+ *
+ * Runs Checkstyle on the Spring Boot backend and oxlint on the React frontend
+ * inside isolated Docker worker containers. Both linters must pass for this
+ * job to succeed; either failure reports FAILURE back to the master.
+ *
+ * Parameters (injected by master):
+ *   UPSTREAM_BUILD_NUMBER  – the master's BUILD_NUMBER (used for image/container names)
+ *   PIPELINE_NETWORK       – the Docker bridge network created by the master
+ */
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 10, unit: 'MINUTES')
+    }
+
+    parameters {
+        string(
+            name: 'UPSTREAM_BUILD_NUMBER',
+            defaultValue: '',
+            description: 'BUILD_NUMBER of the upstream sidequest-master job'
+        )
+        string(
+            name: 'PIPELINE_NETWORK',
+            defaultValue: '',
+            description: 'Isolated Docker bridge network created by the master'
+        )
+    }
+
+    stages {
+        stage('Lint Backend') {
+            steps {
+                echo "=== [LINT] Running Checkstyle on backend (upstream build #${params.UPSTREAM_BUILD_NUMBER}) ==="
+                sh """
+                    docker run --rm \\
+                        --name lint-backend-${params.UPSTREAM_BUILD_NUMBER} \\
+                        --network ${params.PIPELINE_NETWORK} \\
+                        --volumes-from jenkins \\
+                        -w ${WORKSPACE}/backend \\
+                        maven:3.9.7-eclipse-temurin-17 \\
+                        mvn --no-transfer-progress checkstyle:check
+                """
+                echo "=== [LINT] Backend Checkstyle PASSED ==="
+            }
+        }
+
+        stage('Lint Frontend') {
+            steps {
+                echo "=== [LINT] Running oxlint on frontend (upstream build #${params.UPSTREAM_BUILD_NUMBER}) ==="
+                sh """
+                    docker run --rm \\
+                        --name lint-frontend-${params.UPSTREAM_BUILD_NUMBER} \\
+                        --network ${params.PIPELINE_NETWORK} \\
+                        --volumes-from jenkins \\
+                        -w ${WORKSPACE}/frontend \\
+                        node:20-alpine \\
+                        sh -c "npm ci --prefer-offline && npm run lint"
+                """
+                echo "=== [LINT] Frontend oxlint PASSED ==="
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "=== [LINT] All linters PASSED — reporting SUCCESS to master ==="
+        }
+        failure {
+            echo "=== [LINT] One or more linters FAILED — reporting FAILURE to master ==="
+        }
+    }
+}

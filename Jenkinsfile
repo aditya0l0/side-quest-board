@@ -1,21 +1,50 @@
+/*
+ * MASTER / UPSTREAM JOB: sidequest-master
+ *
+ * This pipeline is the sole entry point for the CI system. It:
+ *   1. Creates an isolated Docker bridge network for this build.
+ *   2. Triggers downstream jobs in sequence, passing the network name
+ *      and this build number as parameters.
+ *   3. Gates each successive job on the result of the previous one:
+ *
+ *      Lint SUCCESS  → trigger Test
+ *      Lint FAILURE  → skip Test and Build, mark master FAILURE
+ *
+ *      Test SUCCESS  → trigger Build
+ *      Test UNSTABLE → trigger Build (build still runs; master marked UNSTABLE)
+ *      Test FAILURE  → skip Build, mark master FAILURE
+ *
+ *      Build SUCCESS → master SUCCESS
+ *      Build FAILURE → master FAILURE
+ *
+ * Downstream job script paths (all in the same repository):
+ *   sidequest-lint   →  Jenkinsfile.lint
+ *   sidequest-test   →  Jenkinsfile.test
+ *   sidequest-build  →  Jenkinsfile.build
+ */
 pipeline {
     agent any
+
     options {
         timestamps()
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 30, unit: 'MINUTES')
+        timeout(time: 60, unit: 'MINUTES')
         disableConcurrentBuilds()
     }
 
     environment {
+        // Shared Docker bridge network — created here, destroyed in post.
         PIPELINE_NETWORK = "sidequest-ci-${BUILD_NUMBER}"
+        // Convenience vars used only in post-block summary messages.
         BACKEND_IMAGE    = "sidequest-backend:${BUILD_NUMBER}"
         FRONTEND_IMAGE   = "sidequest-frontend:${BUILD_NUMBER}"
-        LINT_PASSED      = 'false'
-        TEST_PASSED      = 'false'
     }
 
     stages {
+
+        // ─────────────────────────────────────────────────────────────────
+        // PREPARE: stand up the shared Docker network for this build run.
+        // ─────────────────────────────────────────────────────────────────
         stage('Prepare') {
             steps {
                 echo "=== [MASTER] Creating isolated Docker network: ${env.PIPELINE_NETWORK} ==="
@@ -23,167 +52,149 @@ pipeline {
             }
         }
 
-        stage('Lint') {
+        // ─────────────────────────────────────────────────────────────────
+        // TRIGGER LINT: delegate all lint work to sidequest-lint.
+        // A FAILURE here blocks both Test and Build.
+        // ─────────────────────────────────────────────────────────────────
+        stage('Trigger Lint') {
             steps {
-                echo "=== [MASTER] Launching LINT worker containers ==="
-
                 script {
-                    def backendLintStatus = sh(
-                        label: '[lint-backend] Checkstyle worker container',
-                        returnStatus: true,
-                        script: """
-                            docker run --rm \\
-                                --name lint-backend-${BUILD_NUMBER} \\
-                                --network ${env.PIPELINE_NETWORK} \\
-                                --volumes-from jenkins \\
-                                -w ${WORKSPACE}/backend \\
-                                maven:3.9.7-eclipse-temurin-17 \\
-                                mvn --no-transfer-progress checkstyle:check
-                        """
+                    echo "=== [MASTER] Triggering downstream job: sidequest-lint ==="
+
+                    def lintJob = build(
+                        job: 'sidequest-lint',
+                        parameters: [
+                            string(name: 'UPSTREAM_BUILD_NUMBER', value: "${BUILD_NUMBER}"),
+                            string(name: 'PIPELINE_NETWORK',       value: "${env.PIPELINE_NETWORK}")
+                        ],
+                        propagate: false,   // capture result ourselves; do NOT fail master immediately
+                        wait: true
                     )
 
-                    def frontendLintStatus = sh(
-                        label: '[lint-frontend] oxlint worker container',
-                        returnStatus: true,
-                        script: """
-                            docker run --rm \\
-                                --name lint-frontend-${BUILD_NUMBER} \\
-                                --network ${env.PIPELINE_NETWORK} \\
-                                --volumes-from jenkins \\
-                                -w ${WORKSPACE}/frontend \\
-                                node:20-alpine \\
-                                sh -c "npm ci --prefer-offline && npm run lint"
-                        """
-                    )
+                    env.LINT_RESULT = lintJob.result
+                    echo "=== [MASTER] sidequest-lint finished with result: ${env.LINT_RESULT} ==="
 
-                    if (backendLintStatus != 0 || frontendLintStatus != 0) {
-                        error(
-                            "[MASTER] LINT FAILED. " +
-                            "backend-exit=${backendLintStatus}, " +
-                            "frontend-exit=${frontendLintStatus}. " +
-                            "Test and Build stages are SKIPPED."
-                        )
+                    if (env.LINT_RESULT != 'SUCCESS') {
+                        // Propagate failure to master so the final build status is FAILURE.
+                        // when{} expressions on downstream stages will prevent them from running.
+                        currentBuild.result = 'FAILURE'
+                        error("[MASTER] Lint FAILED — Test and Build stages are SKIPPED.")
                     }
-
-                    env.LINT_PASSED = 'true'
-                    echo "=== [MASTER] All lint workers finished SUCCESSFULLY ==="
                 }
             }
         }
 
-        stage('Test') {
-            steps {
-                echo "=== [MASTER] Launching TEST worker containers ==="
-                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-                    sh """
-                        docker run --rm \\
-                            --name test-backend-${BUILD_NUMBER} \\
-                            --network ${env.PIPELINE_NETWORK} \\
-                            --volumes-from jenkins \\
-                            -w ${WORKSPACE}/backend \\
-                            -e SPRING_DATASOURCE_URL="jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1" \\
-                            -e SPRING_DATASOURCE_DRIVER_CLASS_NAME="org.h2.Driver" \\
-                            -e SPRING_JPA_DATABASE_PLATFORM="org.hibernate.dialect.H2Dialect" \\
-                            maven:3.9.7-eclipse-temurin-17 \\
-                            mvn --no-transfer-progress test
-                    """
-                }
-
-                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-                    sh """
-                        docker run --rm \\
-                            --name test-frontend-${BUILD_NUMBER} \\
-                            --network ${env.PIPELINE_NETWORK} \\
-                            --volumes-from jenkins \\
-                            -w ${WORKSPACE}/frontend \\
-                            node:20-alpine \\
-                            sh -c "npm ci --prefer-offline && npm test -- --run"
-                    """
-                }
-
-                script {
-                    if (currentBuild.result == 'UNSTABLE') {
-                        env.TEST_PASSED = 'false'
-                        echo "=== [MASTER] TEST workers finished with FAILURES — Build stage will still run ==="
-                    } else {
-                        env.TEST_PASSED = 'true'
-                        echo "=== [MASTER] All test workers finished SUCCESSFULLY ==="
-                    }
-                }
+        // ─────────────────────────────────────────────────────────────────
+        // TRIGGER TEST: only runs when lint succeeded.
+        // UNSTABLE result → Build still runs (tests failed but code compiled).
+        // FAILURE result  → Build is skipped.
+        // ─────────────────────────────────────────────────────────────────
+        stage('Trigger Test') {
+            when {
+                // Skip cleanly (no error thrown) if lint did not pass.
+                expression { env.LINT_RESULT == 'SUCCESS' }
             }
+            steps {
+                script {
+                    echo "=== [MASTER] Triggering downstream job: sidequest-test ==="
 
-            post {
-                always {
-                    junit(
-                        testResults: 'backend/target/surefire-reports/*.xml',
-                        allowEmptyResults: true
+                    def testJob = build(
+                        job: 'sidequest-test',
+                        parameters: [
+                            string(name: 'UPSTREAM_BUILD_NUMBER', value: "${BUILD_NUMBER}"),
+                            string(name: 'PIPELINE_NETWORK',       value: "${env.PIPELINE_NETWORK}")
+                        ],
+                        propagate: false,
+                        wait: true
                     )
+
+                    env.TEST_RESULT = testJob.result
+                    echo "=== [MASTER] sidequest-test finished with result: ${env.TEST_RESULT} ==="
+
+                    if (env.TEST_RESULT == 'UNSTABLE') {
+                        // Mark master UNSTABLE but do not throw — Build stage will still run.
+                        currentBuild.result = 'UNSTABLE'
+                        echo "[MASTER] Tests UNSTABLE — Build will still run."
+                    } else if (env.TEST_RESULT != 'SUCCESS') {
+                        // Hard failure: skip Build.
+                        currentBuild.result = 'FAILURE'
+                        error("[MASTER] Tests FAILED — Build stage is SKIPPED.")
+                    }
                 }
             }
         }
 
-        stage('Build') {
+        // ─────────────────────────────────────────────────────────────────
+        // TRIGGER BUILD: runs when lint passed AND tests did not hard-fail.
+        // (SUCCESS or UNSTABLE test results both proceed here.)
+        // ─────────────────────────────────────────────────────────────────
+        stage('Trigger Build') {
+            when {
+                allOf {
+                    expression { env.LINT_RESULT == 'SUCCESS' }
+                    // Allow UNSTABLE (test warnings) but not FAILURE or null.
+                    expression { env.TEST_RESULT != 'FAILURE' && env.TEST_RESULT != null }
+                }
+            }
             steps {
-                echo "=== [MASTER] Launching BUILD worker container (always runs) ==="
-
                 script {
-                    def buildStatus = sh(
-                        label: '[build-worker] Build Docker images',
-                        returnStatus: true,
-                        script: """
-                            docker run --rm \\
-                                --name build-worker-${BUILD_NUMBER} \\
-                                --network ${env.PIPELINE_NETWORK} \\
-                                -v /var/run/docker.sock:/var/run/docker.sock \\
-                                --volumes-from jenkins \\
-                                -w ${WORKSPACE} \\
-                                docker:27-cli \\
-                                sh -c "
-                                    echo '=== Building backend Docker image ==='
-                                    docker build -t ${env.BACKEND_IMAGE} ./backend
+                    echo "=== [MASTER] Triggering downstream job: sidequest-build ==="
 
-                                    echo '=== Building frontend Docker image ==='
-                                    docker build -t ${env.FRONTEND_IMAGE} ./frontend
-
-                                    echo '=== Built images ==='
-                                    docker images | grep sidequest
-                                "
-                        """
+                    def buildJob = build(
+                        job: 'sidequest-build',
+                        parameters: [
+                            string(name: 'UPSTREAM_BUILD_NUMBER', value: "${BUILD_NUMBER}"),
+                            string(name: 'PIPELINE_NETWORK',       value: "${env.PIPELINE_NETWORK}")
+                        ],
+                        propagate: false,
+                        wait: true
                     )
 
-                    if (buildStatus != 0) {
-                        error("[MASTER] Build worker FAILED with exit code ${buildStatus}.")
-                    }
+                    env.BUILD_RESULT = buildJob.result
+                    echo "=== [MASTER] sidequest-build finished with result: ${env.BUILD_RESULT} ==="
 
-                    echo "=== [MASTER] Build worker finished SUCCESSFULLY ==="
-                    echo "    → Backend  image : ${env.BACKEND_IMAGE}"
-                    echo "    → Frontend image : ${env.FRONTEND_IMAGE}"
+                    if (env.BUILD_RESULT != 'SUCCESS') {
+                        currentBuild.result = 'FAILURE'
+                        error("[MASTER] Build FAILED — check sidequest-build logs.")
+                    }
                 }
             }
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // POST: always tear down the Docker network; then emit a summary.
+    // ─────────────────────────────────────────────────────────────────────
     post {
         always {
-            echo "=== [MASTER] Cleaning up Docker network: ${env.PIPELINE_NETWORK} ==="
+            echo "=== [MASTER] Tearing down Docker network: ${env.PIPELINE_NETWORK} ==="
             sh "docker network rm ${env.PIPELINE_NETWORK} || true"
 
             script {
-                def lintIcon  = (env.LINT_PASSED == 'true') ? 'PASSED' : 'FAILED'
-                def testIcon  = (env.TEST_PASSED  == 'true') ? 'PASSED' : 'FAILED (build still ran)'
+                def lintSummary  = env.LINT_RESULT  ?: 'SKIPPED'
+                def testSummary  = env.TEST_RESULT   ?: 'SKIPPED'
+                def buildSummary = env.BUILD_RESULT  ?: 'SKIPPED'
+
+                echo """
+=== [MASTER] ─── Pipeline Summary ───────────────────────────
+    sidequest-lint   : ${lintSummary}
+    sidequest-test   : ${testSummary}
+    sidequest-build  : ${buildSummary}
+─────────────────────────────────────────────────────────────
+"""
             }
         }
 
         success {
-            echo "All stages passed. Images ready: ${env.BACKEND_IMAGE}, ${env.FRONTEND_IMAGE}"
+            echo "[MASTER] All downstream jobs PASSED. Images ready: ${env.BACKEND_IMAGE}, ${env.FRONTEND_IMAGE}"
         }
 
         unstable {
-            echo "Pipeline UNSTABLE — tests failed, but images were still built successfully."
+            echo "[MASTER] Pipeline UNSTABLE — tests had failures but images were still built."
         }
 
         failure {
-            echo "Pipeline FAILED. Check the stage logs above for details."
+            echo "[MASTER] Pipeline FAILED. See downstream job logs for details."
         }
     }
 }

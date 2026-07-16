@@ -1,0 +1,99 @@
+/*
+ * DOWNSTREAM JOB: sidequest-build
+ *
+ * Triggered by:  sidequest-master  (Jenkinsfile)
+ *                — only when lint PASSED and tests did not FAIL
+ * Script Path:   Jenkinsfile.build
+ *
+ * Builds the backend and frontend Docker images using Docker-outside-of-Docker
+ * (DooD) — mounts the host Docker socket so the worker container can invoke
+ * `docker build` directly on the host daemon.
+ *
+ * Image tags use the upstream build number for traceability:
+ *   sidequest-backend:<UPSTREAM_BUILD_NUMBER>
+ *   sidequest-frontend:<UPSTREAM_BUILD_NUMBER>
+ *
+ * Parameters (injected by master):
+ *   UPSTREAM_BUILD_NUMBER  – the master's BUILD_NUMBER (used as the image tag)
+ *   PIPELINE_NETWORK       – the Docker bridge network created by the master
+ */
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 20, unit: 'MINUTES')
+    }
+
+    parameters {
+        string(
+            name: 'UPSTREAM_BUILD_NUMBER',
+            defaultValue: '',
+            description: 'BUILD_NUMBER of the upstream sidequest-master job (used as Docker image tag)'
+        )
+        string(
+            name: 'PIPELINE_NETWORK',
+            defaultValue: '',
+            description: 'Isolated Docker bridge network created by the master'
+        )
+    }
+
+    environment {
+        BACKEND_IMAGE  = "sidequest-backend:${params.UPSTREAM_BUILD_NUMBER}"
+        FRONTEND_IMAGE = "sidequest-frontend:${params.UPSTREAM_BUILD_NUMBER}"
+    }
+
+    stages {
+        stage('Build Docker Images') {
+            steps {
+                echo "=== [BUILD] Building Docker images (upstream build #${params.UPSTREAM_BUILD_NUMBER}) ==="
+                echo "    → Target backend  image : ${env.BACKEND_IMAGE}"
+                echo "    → Target frontend image : ${env.FRONTEND_IMAGE}"
+
+                script {
+                    def buildStatus = sh(
+                        label: '[build-worker] Build backend + frontend Docker images',
+                        returnStatus: true,
+                        script: """
+                            docker run --rm \\
+                                --name build-worker-${params.UPSTREAM_BUILD_NUMBER} \\
+                                --network ${params.PIPELINE_NETWORK} \\
+                                -v /var/run/docker.sock:/var/run/docker.sock \\
+                                --volumes-from jenkins \\
+                                -w ${WORKSPACE} \\
+                                docker:27-cli \\
+                                sh -c "
+                                    echo '=== Building backend Docker image ==='
+                                    docker build -t ${env.BACKEND_IMAGE} ./backend
+
+                                    echo '=== Building frontend Docker image ==='
+                                    docker build -t ${env.FRONTEND_IMAGE} ./frontend
+
+                                    echo '=== Built sidequest images ==='
+                                    docker images | grep sidequest
+                                "
+                        """
+                    )
+
+                    if (buildStatus != 0) {
+                        error("[BUILD] Build worker container FAILED with exit code ${buildStatus}.")
+                    }
+                }
+
+                echo "=== [BUILD] Docker images built SUCCESSFULLY ==="
+                echo "    → ${env.BACKEND_IMAGE}"
+                echo "    → ${env.FRONTEND_IMAGE}"
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "=== [BUILD] Reporting SUCCESS to master. Images: ${env.BACKEND_IMAGE}, ${env.FRONTEND_IMAGE} ==="
+        }
+        failure {
+            echo "=== [BUILD] Reporting FAILURE to master — check build-worker logs above ==="
+        }
+    }
+}
