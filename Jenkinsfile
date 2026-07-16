@@ -261,15 +261,6 @@ pipeline {
             script {
                 def lintIcon  = (env.LINT_PASSED == 'true') ? 'PASSED' : 'FAILED'
                 def testIcon  = (env.TEST_PASSED  == 'true') ? 'PASSED' : 'FAILED (build still ran)'
-                echo """
-╔══════════════════════════════════════════════╗
-║       SIDE QUEST BOARD — CI SUMMARY          ║
-╠══════════════════════════════════════════════╣
-║  Build # : ${BUILD_NUMBER}
-║  Result  : ${currentBuild.currentResult}
-║  Lint    : ${lintIcon}
-║  Tests   : ${testIcon}
-╚══════════════════════════════════════════════╝"""
             }
         }
 
