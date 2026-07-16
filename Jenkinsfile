@@ -1,28 +1,4 @@
-// ============================================================
-//  Side Quest Board — CI Pipeline
-//  Orchestrator: Jenkins master (this file)
-//  Workers:
-//    1. lint-worker   — node:20-alpine (frontend oxlint)
-//                     + maven:3.9.7-eclipse-temurin-17 (backend checkstyle)
-//    2. test-worker   — same images; runs vitest + mvn test
-//    3. build-worker  — docker:27-cli with DooD; builds final Docker images
-//
-//  Flow:
-//    Lint ──(pass)──► Test ──(pass OR fail)──► Build
-//         └─(fail)──► ABORT (Test + Build are skipped)
-//
-//  Prerequisites on the Jenkins agent host (WSL2 / Docker Desktop):
-//    • Docker Engine accessible via /var/run/docker.sock (DooD pattern)
-//    • Jenkins agent container must be started with:
-//        -v /var/run/docker.sock:/var/run/docker.sock
-//        -v jenkins-home:/var/jenkins_home
-//    • No Maven or Node.js needed on the host — all tooling is in containers
-// ============================================================
-
 pipeline {
-
-    // The orchestrating agent — runs on the Jenkins built-in node or any
-    // agent that has Docker available (DooD setup on WSL2 / Docker Desktop).
     agent any
 
     // ---------- Global pipeline options ----------
