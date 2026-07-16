@@ -1,37 +1,21 @@
 pipeline {
     agent any
-
-    // ---------- Global pipeline options ----------
     options {
         timestamps()
-        // Keep only the last 10 builds to save disk space
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        // Fail the whole pipeline if it runs longer than 30 minutes
         timeout(time: 30, unit: 'MINUTES')
-        // Prevent concurrent builds on the same branch
         disableConcurrentBuilds()
     }
 
-    // ---------- Pipeline-wide environment ----------
     environment {
-        // Isolated Docker network shared by all worker containers this build
         PIPELINE_NETWORK = "sidequest-ci-${BUILD_NUMBER}"
-        // Final application image tags produced by the Build stage
         BACKEND_IMAGE    = "sidequest-backend:${BUILD_NUMBER}"
         FRONTEND_IMAGE   = "sidequest-frontend:${BUILD_NUMBER}"
-        // Flags written by each stage and read in the post summary
         LINT_PASSED      = 'false'
         TEST_PASSED      = 'false'
     }
 
     stages {
-
-        // ──────────────────────────────────────────────────────────────────
-        //  STAGE 0 — Preparation
-        //  Create an isolated Docker bridge network so all worker containers
-        //  in this build share the same namespace (useful if they ever need
-        //  to reach each other, e.g. a DB sidecar for integration tests).
-        // ──────────────────────────────────────────────────────────────────
         stage('Prepare') {
             steps {
                 echo "=== [MASTER] Creating isolated Docker network: ${env.PIPELINE_NETWORK} ==="
@@ -39,24 +23,11 @@ pipeline {
             }
         }
 
-        // ──────────────────────────────────────────────────────────────────
-        //  STAGE 1 — LINT WORKER CONTAINERS
-        //
-        //  Two short-lived worker containers are launched sequentially:
-        //    • lint-backend  → maven:3.9.7-eclipse-temurin-17
-        //                      runs: mvn checkstyle:check  (Google style)
-        //    • lint-frontend → node:20-alpine
-        //                      runs: npm run lint  (oxlint)
-        //
-        //  If EITHER container exits non-zero the stage errors out and
-        //  Jenkins skips all downstream stages (Test + Build are aborted).
-        // ──────────────────────────────────────────────────────────────────
         stage('Lint') {
             steps {
                 echo "=== [MASTER] Launching LINT worker containers ==="
 
                 script {
-                    // ── Worker 1: Backend Checkstyle ──────────────────────
                     def backendLintStatus = sh(
                         label: '[lint-backend] Checkstyle worker container',
                         returnStatus: true,
@@ -71,7 +42,6 @@ pipeline {
                         """
                     )
 
-                    // ── Worker 2: Frontend oxlint ─────────────────────────
                     def frontendLintStatus = sh(
                         label: '[lint-frontend] oxlint worker container',
                         returnStatus: true,
@@ -86,7 +56,6 @@ pipeline {
                         """
                     )
 
-                    // ── Aggregate: both workers must succeed ──────────────
                     if (backendLintStatus != 0 || frontendLintStatus != 0) {
                         error(
                             "[MASTER] LINT FAILED. " +
@@ -102,25 +71,9 @@ pipeline {
             }
         }
 
-        // ──────────────────────────────────────────────────────────────────
-        //  STAGE 2 — TEST WORKER CONTAINERS
-        //
-        //  Two short-lived worker containers run tests:
-        //    • test-backend  → maven:3.9.7-eclipse-temurin-17
-        //                      runs: mvn test  (JUnit / Spring Boot Test)
-        //                      uses H2 in-memory DB so no MySQL is needed
-        //    • test-frontend → node:20-alpine
-        //                      runs: npm test -- --run  (vitest)
-        //
-        //  IMPORTANT: catchError wraps both so that test failures set the
-        //  build to UNSTABLE but do NOT prevent the Build stage from running.
-        // ──────────────────────────────────────────────────────────────────
         stage('Test') {
             steps {
                 echo "=== [MASTER] Launching TEST worker containers ==="
-
-                // ── Worker 3: Backend JUnit tests ─────────────────────────
-                // H2 env vars override MySQL so the test container is self-contained.
                 catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
                     sh """
                         docker run --rm \\
@@ -136,7 +89,6 @@ pipeline {
                     """
                 }
 
-                // ── Worker 4: Frontend vitest ─────────────────────────────
                 catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
                     sh """
                         docker run --rm \\
@@ -149,7 +101,6 @@ pipeline {
                     """
                 }
 
-                // ── Record overall test outcome ───────────────────────────
                 script {
                     if (currentBuild.result == 'UNSTABLE') {
                         env.TEST_PASSED = 'false'
@@ -161,7 +112,6 @@ pipeline {
                 }
             }
 
-            // Collect JUnit XML reports after the stage (pass or fail)
             post {
                 always {
                     junit(
@@ -172,19 +122,6 @@ pipeline {
             }
         }
 
-        // ──────────────────────────────────────────────────────────────────
-        //  STAGE 3 — BUILD WORKER CONTAINER
-        //
-        //  One worker container using docker:27-cli (Docker CLI only, no daemon).
-        //  It receives the host Docker socket via DooD (-v /var/run/docker.sock)
-        //  and builds the final application images:
-        //    • sidequest-backend:<BUILD_NUMBER>   (from backend/Dockerfile)
-        //    • sidequest-frontend:<BUILD_NUMBER>  (from frontend/Dockerfile)
-        //
-        //  This stage ALWAYS runs — even when tests failed — because
-        //  catchError in the Test stage only sets UNSTABLE, not FAILURE.
-        //  A hard build failure here IS a pipeline failure.
-        // ──────────────────────────────────────────────────────────────────
         stage('Build') {
             steps {
                 echo "=== [MASTER] Launching BUILD worker container (always runs) ==="
@@ -226,9 +163,6 @@ pipeline {
         }
     }
 
-    // ──────────────────────────────────────────────────────────────────────
-    //  POST — runs after all stages, regardless of outcome
-    // ──────────────────────────────────────────────────────────────────────
     post {
         always {
             echo "=== [MASTER] Cleaning up Docker network: ${env.PIPELINE_NETWORK} ==="
