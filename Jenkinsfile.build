@@ -38,6 +38,22 @@ pipeline {
             defaultValue: '',
             description: 'Isolated Docker bridge network created by the master'
         )
+        // ── Webhook trigger context (forwarded by master, empty when manual) ──
+        string(
+            name: 'GITHUB_ISSUE_NUMBER',
+            defaultValue: '',
+            description: 'GitHub issue number that triggered this build'
+        )
+        string(
+            name: 'GITHUB_ISSUE_TITLE',
+            defaultValue: '',
+            description: 'GitHub issue title for log context'
+        )
+        string(
+            name: 'TRIGGERED_BY',
+            defaultValue: 'manual',
+            description: 'Trigger source: "github-issue-webhook" | "manual"'
+        )
     }
 
     environment {
@@ -50,6 +66,11 @@ pipeline {
     stages {
         stage('Build and Push Docker Images') {
             steps {
+                script {
+                    if (params.TRIGGERED_BY == 'github-issue-webhook') {
+                        echo "=== [BUILD] Triggered by GitHub Issue #${params.GITHUB_ISSUE_NUMBER}: \"${params.GITHUB_ISSUE_TITLE}\" ==="
+                    }
+                }
                 echo "=== [BUILD] Building Docker images (upstream build #${params.UPSTREAM_BUILD_NUMBER}) ==="
                 echo "    → Target backend  image : ${env.BACKEND_IMAGE}"
                 echo "    → Target frontend image : ${env.FRONTEND_IMAGE}"

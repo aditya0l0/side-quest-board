@@ -37,5 +37,29 @@ services:
     depends_on:
       - backend
 
+  # ──────────────────────────────────────────────────────────────────────────
+  # GitHub Issues → Jenkins Webhook Receiver
+  #
+  # Listens for GitHub "issues.labeled" events and triggers the matching
+  # Jenkins CI job via the Jenkins REST API.
+  #
+  # Before starting, copy webhook-server/.env.example → webhook-server/.env
+  # and fill in GITHUB_WEBHOOK_SECRET, JENKINS_USER, JENKINS_API_TOKEN.
+  # ──────────────────────────────────────────────────────────────────────────
+  webhook:
+    build: ./webhook-server
+    container_name: sidequest-webhook
+    restart: unless-stopped
+    ports:
+      - "3000:3000"            # expose to host so GitHub can reach it (or via ngrok)
+    env_file:
+      - ./webhook-server/.env  # copy from .env.example — never commit this file
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
 volumes:
   db_data:

@@ -4,3 +4,6 @@ target/
 **/dist/
 .idea/
 *.class
+
+# Webhook server secrets — NEVER commit these
+webhook-server/.env

@@ -40,6 +40,25 @@ pipeline {
         FRONTEND_IMAGE   = "sidequest-frontend:${BUILD_NUMBER}"
     }
 
+    parameters {
+        // ── Webhook trigger context (empty when triggered manually) ──────────
+        string(
+            name: 'GITHUB_ISSUE_NUMBER',
+            defaultValue: '',
+            description: 'GitHub issue number that triggered this build (blank = manual run)'
+        )
+        string(
+            name: 'GITHUB_ISSUE_TITLE',
+            defaultValue: '',
+            description: 'GitHub issue title for log context'
+        )
+        string(
+            name: 'TRIGGERED_BY',
+            defaultValue: 'manual',
+            description: 'Trigger source: "github-issue-webhook" | "manual"'
+        )
+    }
+
     stages {
 
         // ─────────────────────────────────────────────────────────────────
@@ -47,6 +66,13 @@ pipeline {
         // ─────────────────────────────────────────────────────────────────
         stage('Prepare') {
             steps {
+                script {
+                    if (params.TRIGGERED_BY == 'github-issue-webhook') {
+                        echo "=== [MASTER] Triggered by GitHub Issue #${params.GITHUB_ISSUE_NUMBER}: \"${params.GITHUB_ISSUE_TITLE}\" ==="
+                    } else {
+                        echo "=== [MASTER] Triggered manually ==="
+                    }
+                }
                 echo "=== [MASTER] Creating isolated Docker network: ${env.PIPELINE_NETWORK} ==="
                 sh "docker network create ${env.PIPELINE_NETWORK} || true"
             }

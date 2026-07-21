@@ -34,11 +34,32 @@ pipeline {
             defaultValue: '',
             description: 'Isolated Docker bridge network created by the master'
         )
+        // ── Webhook trigger context (forwarded by master, empty when manual) ──
+        string(
+            name: 'GITHUB_ISSUE_NUMBER',
+            defaultValue: '',
+            description: 'GitHub issue number that triggered this build'
+        )
+        string(
+            name: 'GITHUB_ISSUE_TITLE',
+            defaultValue: '',
+            description: 'GitHub issue title for log context'
+        )
+        string(
+            name: 'TRIGGERED_BY',
+            defaultValue: 'manual',
+            description: 'Trigger source: "github-issue-webhook" | "manual"'
+        )
     }
 
     stages {
         stage('Test Backend') {
             steps {
+                script {
+                    if (params.TRIGGERED_BY == 'github-issue-webhook') {
+                        echo "=== [TEST] Triggered by GitHub Issue #${params.GITHUB_ISSUE_NUMBER}: \"${params.GITHUB_ISSUE_TITLE}\" ==="
+                    }
+                }
                 echo "=== [TEST] Running backend unit tests (upstream build #${params.UPSTREAM_BUILD_NUMBER}) ==="
                 catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
                     sh """
