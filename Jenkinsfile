@@ -53,6 +53,11 @@ pipeline {
             description: 'GitHub issue title for log context'
         )
         string(
+            name: 'GITHUB_REPO',
+            defaultValue: '',
+            description: 'Full repo name (owner/repo) used to post GitHub issue comments'
+        )
+        string(
             name: 'TRIGGERED_BY',
             defaultValue: 'manual',
             description: 'Trigger source: "github-issue-webhook" | "manual"'
@@ -198,8 +203,8 @@ pipeline {
 
             script {
                 def lintSummary  = env.LINT_RESULT  ?: 'SKIPPED'
-                def testSummary  = env.TEST_RESULT   ?: 'SKIPPED'
-                def buildSummary = env.BUILD_RESULT  ?: 'SKIPPED'
+                def testSummary  = env.TEST_RESULT  ?: 'SKIPPED'
+                def buildSummary = env.BUILD_RESULT ?: 'SKIPPED'
 
                 echo """
 === [MASTER] ─── Pipeline Summary ───────────────────────────
@@ -208,6 +213,54 @@ pipeline {
     sidequest-build  : ${buildSummary}
 ─────────────────────────────────────────────────────────────
 """
+
+                // ── Post GitHub issue comment (webhook-triggered runs only) ────
+                if (params.TRIGGERED_BY == 'github-issue-webhook' && params.GITHUB_ISSUE_NUMBER) {
+
+                    // Map a stage result string to a status emoji
+                    def statusEmoji = { String s ->
+                        s == 'SUCCESS' ? '\u2705' : s == 'UNSTABLE' ? '\u26a0\ufe0f' : s == 'SKIPPED' ? '\u23ed\ufe0f' : '\u274c'
+                    }
+
+                    def overallStatus = currentBuild.currentResult ?: 'FAILURE'
+                    def overallEmoji  = statusEmoji(overallStatus)
+
+                    def commentBody = """## ${overallEmoji} Jenkins CI Report \u2014 Build #${BUILD_NUMBER}
+
+**Triggered by:** Issue #${params.GITHUB_ISSUE_NUMBER} \u2014 \"${params.GITHUB_ISSUE_TITLE}\"
+
+| Stage | Result |
+|-------|--------|
+| \ud83d\udd0d Lint  | ${statusEmoji(lintSummary)} ${lintSummary} |
+| \ud83e\uddea Test  | ${statusEmoji(testSummary)} ${testSummary} |
+| \ud83c\udfd7\ufe0f Build | ${statusEmoji(buildSummary)} ${buildSummary} |
+
+**Overall: ${overallEmoji} ${overallStatus}**
+
+> \ud83d\udd17 [View Build Log](${BUILD_URL}console)"""
+
+                    try {
+                        writeFile file: 'gh_comment.json',
+                                  text: groovy.json.JsonOutput.toJson([body: commentBody])
+
+                        withCredentials([string(credentialsId: 'github-pat-issue-comment', variable: 'GH_TOKEN')]) {
+                            def httpCode = sh(
+                                returnStdout: true,
+                                script: """
+                                    curl -s -o /dev/null -w "%{http_code}" -X POST \\
+                                        -H "Authorization: token \${GH_TOKEN}" \\
+                                        -H "Content-Type: application/json" \\
+                                        --data @gh_comment.json \\
+                                        "https://api.github.com/repos/${params.GITHUB_REPO}/issues/${params.GITHUB_ISSUE_NUMBER}/comments"
+                                """
+                            ).trim()
+                            echo "[MASTER] GitHub Issues API returned HTTP ${httpCode}"
+                        }
+                        echo "[MASTER] \u2705 Comment posted on Issue #${params.GITHUB_ISSUE_NUMBER} in ${params.GITHUB_REPO}"
+                    } catch (err) {
+                        echo "[MASTER] \u26a0\ufe0f Could not post GitHub comment (check 'github-pat-issue-comment' credential): ${err.message}"
+                    }
+                }
             }
         }
 

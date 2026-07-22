@@ -145,6 +145,7 @@ app.post('/webhook/github', async (req, res) => {
         const buildParams = {
             GITHUB_ISSUE_NUMBER : String(issueNum),
             GITHUB_ISSUE_TITLE  : issueTitle,
+            GITHUB_REPO         : repoName,
             TRIGGERED_BY        : 'github-issue-webhook',
         };
 
