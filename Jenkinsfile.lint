@@ -73,7 +73,7 @@ pipeline {
                     docker run --rm \\
                         --name lint-backend-${params.UPSTREAM_BUILD_NUMBER} \\
                         --network ${params.PIPELINE_NETWORK} \\
-                        -v /var/jenkins_home:/var/jenkins_home \\
+                        --volumes-from jenkins \\
                         -w ${WORKSPACE}/backend \\
                         maven:3.9.7-eclipse-temurin-17 \\
                         mvn --no-transfer-progress checkstyle:check
@@ -89,7 +89,7 @@ pipeline {
                     docker run --rm \\
                         --name lint-frontend-${params.UPSTREAM_BUILD_NUMBER} \\
                         --network ${params.PIPELINE_NETWORK} \\
-                        -v /var/jenkins_home:/var/jenkins_home \\
+                        --volumes-from jenkins \\
                         -w ${WORKSPACE}/frontend \\
                         node:20-alpine \\
                         sh -c "npm ci --prefer-offline && npm run lint"
