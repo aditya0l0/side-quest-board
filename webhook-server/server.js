@@ -1,13 +1,22 @@
 /**
  * GitHub Issues → Jenkins Webhook Receiver
  *
- * Listens for GitHub "issues" webhook events and triggers Jenkins pipelines
- * based on the label applied to the issue:
+ * Listens for GitHub "issues" webhook events and triggers the sidequest-master
+ * Jenkins pipeline with a PIPELINE_STAGES parameter based on the CI labels
+ * applied to the issue.
  *
- *   Label "ci:lint"   → triggers sidequest-lint only
- *   Label "ci:test"   → triggers sidequest-test only
- *   Label "ci:build"  → triggers sidequest-build only
- *   Label "ci:all"    → triggers sidequest-master (runs lint → test → build)
+ * Supported labels:
+ *   ci:lint   → PIPELINE_STAGES=lint
+ *   ci:test   → PIPELINE_STAGES=test
+ *   ci:build  → PIPELINE_STAGES=build
+ *   ci:all    → PIPELINE_STAGES=all  (lint → test → build with full gating)
+ *
+ * Multiple labels on the same issue within the 15-second debounce window are
+ * merged into one trigger (e.g. ci:lint + ci:test → PIPELINE_STAGES=lint,test).
+ *
+ * Handled events:
+ *   issues.labeled  – a CI label was applied to an existing issue
+ *   issues.opened   – an issue was created that already has CI labels
  *
  * Environment variables (set in .env):
  *   PORT                  – port to listen on (default: 3000)
@@ -15,31 +24,48 @@
  *   JENKINS_URL           – base Jenkins URL, e.g. http://jenkins:8080
  *   JENKINS_USER          – Jenkins username (e.g. admin)
  *   JENKINS_API_TOKEN     – Jenkins API token (User → Configure → API Token)
+ *   TRIGGER_DELAY_MS      – ms to wait before firing (default: 15000)
  */
 
 'use strict';
 
 const express = require('express');
-const crypto = require('crypto');
-const axios = require('axios');
+const crypto  = require('crypto');
+const axios   = require('axios');
 require('dotenv').config();
 
 const app = express();
 
 // ─── Configuration ────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 3000;
-const WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET;
-const JENKINS_URL = process.env.JENKINS_URL;
-const JENKINS_USER = process.env.JENKINS_USER;
-const JENKINS_TOKEN = process.env.JENKINS_API_TOKEN;
+const PORT            = process.env.PORT             || 3000;
+const WEBHOOK_SECRET  = process.env.GITHUB_WEBHOOK_SECRET;
+const JENKINS_URL     = process.env.JENKINS_URL;
+const JENKINS_USER    = process.env.JENKINS_USER;
+const JENKINS_TOKEN   = process.env.JENKINS_API_TOKEN;
+const TRIGGER_DELAY   = parseInt(process.env.TRIGGER_DELAY_MS ?? '15000', 10);
 
-// Label → Jenkins job name mapping
-const LABEL_TO_JOB = {
-    'ci:lint': 'sidequest-lint',
-    'ci:test': 'sidequest-test',
-    'ci:build': 'sidequest-build',
-    'ci:all': 'sidequest-master',
+// CI label → pipeline stage token
+const LABEL_TO_STAGE = {
+    'ci:lint':  'lint',
+    'ci:test':  'test',
+    'ci:build': 'build',
+    'ci:all':   'all',
 };
+
+// All individual stage tokens
+const ALL_STAGE_TOKENS = new Set(['lint', 'test', 'build']);
+
+// ─── Debounce State ───────────────────────────────────────────────────────────
+/**
+ * pendingBuilds — keyed by issue number (string).
+ * Each value: { timer: TimeoutHandle, labels: Set<string>, issueData: object }
+ *
+ * When a CI label event arrives for issue N:
+ *   1. Add the stage token to pendingBuilds[N].labels
+ *   2. Clear & restart the 15-second timer
+ * When the timer fires, resolve all accumulated labels → trigger master once.
+ */
+const pendingBuilds = new Map();
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 // Keep the raw body buffer so we can verify the HMAC-SHA256 signature.
@@ -58,52 +84,137 @@ function verifySignature(req) {
         return false;
     }
 
-    const hmac = crypto.createHmac('sha256', WEBHOOK_SECRET);
+    const hmac   = crypto.createHmac('sha256', WEBHOOK_SECRET);
     const digest = 'sha256=' + hmac.update(req.body).digest('hex');
 
     try {
         return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(digest));
     } catch {
-        // Buffers have different lengths → definitely not equal
-        return false;
+        return false; // buffers have different lengths → definitely not equal
     }
 }
 
 /**
- * Calls the Jenkins REST API to queue a parameterized build.
- * @param {string} jobName   Jenkins job name (e.g. "sidequest-master")
- * @param {object} params    Key/value pairs passed as build parameters
- * @returns {number}         HTTP status returned by Jenkins (201 = queued)
+ * Converts a Set of CI label names into the PIPELINE_STAGES string for master.
+ *
+ * Rules:
+ *   - If the set contains 'all' (from ci:all)            → "all"
+ *   - If the set contains all three individual stages     → "all"
+ *   - Otherwise join the stage tokens with commas         → e.g. "lint,test"
+ *   - If no recognised CI labels → null (nothing to do)
+ *
+ * @param   {Set<string>} labels   CI label names (e.g. 'ci:lint', 'ci:all')
+ * @returns {string|null}          PIPELINE_STAGES value, or null if no CI labels
  */
-async function triggerJenkinsJob(jobName, params = {}) {
-    const hasParams = Object.keys(params).length > 0;
-    const endpoint = hasParams
-        ? `${JENKINS_URL}/job/${encodeURIComponent(jobName)}/buildWithParameters`
-        : `${JENKINS_URL}/job/${encodeURIComponent(jobName)}/build`;
+function resolveStages(labels) {
+    const stages = new Set();
+    for (const label of labels) {
+        const stage = LABEL_TO_STAGE[label];
+        if (stage) stages.add(stage);
+    }
 
-    console.log(`[webhook] → Triggering job "${jobName}" at ${endpoint}`);
-    console.log(`[webhook]   params:`, params);
+    if (stages.size === 0)                   return null;
+    if (stages.has('all'))                   return 'all';
+    if (ALL_STAGE_TOKENS.size === [...stages].filter(s => ALL_STAGE_TOKENS.has(s)).length &&
+        [...ALL_STAGE_TOKENS].every(s => stages.has(s))) return 'all';
+
+    return [...stages].join(',');
+}
+
+/**
+ * Triggers the sidequest-master Jenkins job with the given stage list and
+ * issue context parameters.
+ *
+ * @param {string} pipelineStages  Value for PIPELINE_STAGES (e.g. "all", "lint,test")
+ * @param {object} issueData       { issueNum, issueTitle, repoName }
+ * @returns {number}               HTTP status returned by Jenkins (201 = queued)
+ */
+async function triggerMaster(pipelineStages, issueData) {
+    const { issueNum, issueTitle, repoName } = issueData;
+    const jobName  = 'sidequest-master';
+    const endpoint = `${JENKINS_URL}/job/${encodeURIComponent(jobName)}/buildWithParameters`;
+
+    const buildParams = {
+        PIPELINE_STAGES:     pipelineStages,
+        GITHUB_ISSUE_NUMBER: String(issueNum),
+        GITHUB_ISSUE_TITLE:  issueTitle,
+        GITHUB_REPO:         repoName,
+        TRIGGERED_BY:        'github-issue-webhook',
+    };
+
+    console.log(`[webhook] → Triggering sidequest-master`);
+    console.log(`[webhook]   PIPELINE_STAGES : ${pipelineStages}`);
+    console.log(`[webhook]   Issue            : #${issueNum} "${issueTitle}" in ${repoName}`);
 
     const response = await axios.post(endpoint, null, {
-        params,
-        auth: { username: JENKINS_USER, password: JENKINS_TOKEN },
-        // Jenkins may return 201 Created; axios treats non-2xx as errors by default
+        params: buildParams,
+        auth:   { username: JENKINS_USER, password: JENKINS_TOKEN },
         validateStatus: (s) => s >= 200 && s < 400,
     });
 
+    console.log(`[webhook] Jenkins responded HTTP ${response.status} for sidequest-master`);
     return response.status;
+}
+
+/**
+ * Schedules (or re-schedules) a master build for the given issue.
+ * If a pending timer already exists for this issue it is reset, giving a fresh
+ * 15-second window for additional labels to arrive.
+ *
+ * @param {number} issueNum     GitHub issue number
+ * @param {string} labelName    CI label just applied (may be null for issues.opened scan)
+ * @param {object} issueData    { issueNum, issueTitle, repoName }
+ */
+function scheduleBuild(issueNum, labelName, issueData) {
+    const key = String(issueNum);
+
+    // Retrieve or create the pending entry for this issue
+    let pending = pendingBuilds.get(key);
+    if (!pending) {
+        pending = { timer: null, labels: new Set(), issueData };
+        pendingBuilds.set(key, pending);
+    }
+
+    // Add the new label (if provided)
+    if (labelName) {
+        pending.labels.add(labelName);
+        console.log(`[webhook] Issue #${issueNum} — accumulated labels: [${[...pending.labels].join(', ')}] (${TRIGGER_DELAY / 1000}s timer reset)`);
+    }
+
+    // Reset the debounce timer
+    if (pending.timer) clearTimeout(pending.timer);
+
+    pending.timer = setTimeout(async () => {
+        pendingBuilds.delete(key);
+
+        const stages = resolveStages(pending.labels);
+        if (!stages) {
+            console.log(`[webhook] Issue #${issueNum} — no recognised CI labels; skipping.`);
+            return;
+        }
+
+        console.log(`[webhook] Issue #${issueNum} — debounce elapsed → triggering master with PIPELINE_STAGES="${stages}"`);
+        try {
+            await triggerMaster(stages, pending.issueData);
+        } catch (err) {
+            const details = err.response
+                ? `HTTP ${err.response.status} — ${JSON.stringify(err.response.data)}`
+                : err.message;
+            console.error(`[webhook] Failed to trigger sidequest-master for issue #${issueNum}:`, details);
+        }
+    }, TRIGGER_DELAY);
 }
 
 // ─── Webhook Endpoint ─────────────────────────────────────────────────────────
 app.post('/webhook/github', async (req, res) => {
 
-    // 1. Verify HMAC signature —————————————————————————————————————————————————
+    // 1. Verify HMAC signature ─────────────────────────────────────────────────
     if (!verifySignature(req)) {
         console.warn('[webhook] 401 — invalid or missing signature.');
         return res.status(401).json({ error: 'Invalid webhook signature' });
     }
 
-    // 2. Parse JSON body (was kept raw for signature check) ———————————————————
+    // 2. Parse JSON body ────────────────────────────────────────────────────────
     let payload;
     try {
         payload = JSON.parse(req.body.toString('utf8'));
@@ -111,73 +222,81 @@ app.post('/webhook/github', async (req, res) => {
         return res.status(400).json({ error: 'Invalid JSON in request body' });
     }
 
-    const event = req.headers['x-github-event'];
+    const event  = req.headers['x-github-event'];
     const action = payload.action;
 
     console.log(`[webhook] Received event="${event}" action="${action}"`);
 
-    // 3. Only handle issues.labeled ——————————————————————————————————————————
-    if (event !== 'issues' || action !== 'labeled') {
-        return res.status(200).json({ message: `Event "${event}.${action}" ignored` });
+    // 3. Only handle issues events ─────────────────────────────────────────────
+    if (event !== 'issues') {
+        return res.status(200).json({ message: `Event "${event}" ignored` });
     }
 
-    const labelName = payload.label?.name ?? '(unknown)';
-    const issueNum = payload.issue?.number ?? 0;
-    const issueTitle = payload.issue?.title ?? '';
-    const repoName = payload.repository?.full_name ?? '';
+    const issueNum   = payload.issue?.number  ?? 0;
+    const issueTitle = payload.issue?.title   ?? '';
+    const repoName   = payload.repository?.full_name ?? '';
+    const issueData  = { issueNum, issueTitle, repoName };
 
-    console.log(`[webhook] Issue #${issueNum} in "${repoName}" labeled: "${labelName}"`);
-    console.log(`[webhook] Issue title: "${issueTitle}"`);
+    // ── Case A: a label was just applied ──────────────────────────────────────
+    if (action === 'labeled') {
+        const labelName = payload.label?.name ?? '';
+        console.log(`[webhook] Issue #${issueNum} labeled: "${labelName}"`);
 
-    // 4. Resolve the Jenkins job ————————————————————————————————————————————————
-    const jobName = LABEL_TO_JOB[labelName];
-    if (!jobName) {
-        console.log(`[webhook] No CI job mapped for label "${labelName}" — ignoring.`);
+        if (!LABEL_TO_STAGE[labelName]) {
+            console.log(`[webhook] Label "${labelName}" is not a CI label — ignoring.`);
+            return res.status(200).json({ message: `Label "${labelName}" not a CI label; ignored` });
+        }
+
+        scheduleBuild(issueNum, labelName, issueData);
+
         return res.status(200).json({
-            message: `No CI job mapped for label: ${labelName}`,
-            label: labelName,
+            message:     `CI label received; build scheduled in ${TRIGGER_DELAY / 1000}s`,
+            issue:       issueNum,
+            label:       labelName,
+            triggerInMs: TRIGGER_DELAY,
         });
     }
 
-    // 5. Trigger Jenkins ————————————————————————————————————————————————————————
-    //    Pass issue context as build parameters so the Jenkinsfile can log them.
-    try {
-        const buildParams = {
-            GITHUB_ISSUE_NUMBER: String(issueNum),
-            GITHUB_ISSUE_TITLE: issueTitle,
-            GITHUB_REPO: repoName,
-            TRIGGERED_BY: 'github-issue-webhook',
-        };
+    // ── Case B: issue was just opened — check its existing labels ─────────────
+    if (action === 'opened') {
+        const existingLabels = (payload.issue?.labels ?? []).map((l) => l.name);
+        const ciLabels = existingLabels.filter((l) => LABEL_TO_STAGE[l]);
 
-        const httpStatus = await triggerJenkinsJob(jobName, buildParams);
+        console.log(`[webhook] Issue #${issueNum} opened — labels: [${existingLabels.join(', ') || 'none'}]`);
 
-        console.log(`[webhook] Jenkins responded with HTTP ${httpStatus} for job "${jobName}"`);
+        if (ciLabels.length === 0) {
+            return res.status(200).json({ message: 'No CI labels on new issue; ignored' });
+        }
+
+        for (const label of ciLabels) {
+            scheduleBuild(issueNum, label, issueData);
+        }
+
         return res.status(200).json({
-            message: `Triggered Jenkins job: ${jobName}`,
-            job: jobName,
-            label: labelName,
-            issue: issueNum,
-            httpStatus,
-        });
-    } catch (err) {
-        const details = err.response
-            ? `HTTP ${err.response.status} — ${JSON.stringify(err.response.data)}`
-            : err.message;
-
-        console.error(`[webhook] Failed to trigger Jenkins job "${jobName}":`, details);
-        return res.status(502).json({
-            error: `Failed to trigger Jenkins job: ${jobName}`,
-            details,
+            message:     `CI labels found on new issue; build scheduled in ${TRIGGER_DELAY / 1000}s`,
+            issue:       issueNum,
+            ciLabels,
+            triggerInMs: TRIGGER_DELAY,
         });
     }
+
+    // ── Anything else (closed, edited, unlabeled, …) ─────────────────────────
+    return res.status(200).json({ message: `Action "${action}" ignored` });
 });
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
     res.json({
-        status: 'ok',
-        jenkins: JENKINS_URL,
-        mapping: LABEL_TO_JOB,
+        status:        'ok',
+        jenkins:       JENKINS_URL,
+        triggerDelayMs: TRIGGER_DELAY,
+        labelMapping:  LABEL_TO_STAGE,
+        pendingBuilds: Object.fromEntries(
+            [...pendingBuilds.entries()].map(([k, v]) => [
+                `issue#${k}`,
+                { labels: [...v.labels], issueTitle: v.issueData.issueTitle },
+            ])
+        ),
     });
 });
 
@@ -191,13 +310,14 @@ if (missingVars.length > 0) {
 }
 
 app.listen(PORT, () => {
-    console.log(`[webhook] ─────────────────────────────────────────────`);
+    console.log(`[webhook] ─────────────────────────────────────────────────────`);
     console.log(`[webhook] GitHub Issues → Jenkins Webhook Receiver`);
     console.log(`[webhook] Listening on port ${PORT}`);
-    console.log(`[webhook] Jenkins URL : ${JENKINS_URL || '(not set)'}`);
-    console.log(`[webhook] Label → Job mapping:`);
-    Object.entries(LABEL_TO_JOB).forEach(([label, job]) =>
-        console.log(`[webhook]   ${label.padEnd(12)} →  ${job}`)
+    console.log(`[webhook] Jenkins URL      : ${JENKINS_URL || '(not set)'}`);
+    console.log(`[webhook] Trigger delay    : ${TRIGGER_DELAY / 1000}s`);
+    console.log(`[webhook] CI label mapping :`);
+    Object.entries(LABEL_TO_STAGE).forEach(([label, stage]) =>
+        console.log(`[webhook]   ${label.padEnd(12)} →  PIPELINE_STAGES=${stage}`)
     );
-    console.log(`[webhook] ─────────────────────────────────────────────`);
+    console.log(`[webhook] ─────────────────────────────────────────────────────`);
 });

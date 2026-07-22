@@ -41,6 +41,12 @@ pipeline {
     }
 
     parameters {
+        // ── Which stages to run (set by webhook server; default runs everything) ─
+        string(
+            name: 'PIPELINE_STAGES',
+            defaultValue: 'all',
+            description: 'Stages to run: all | lint | test | build | lint,test | test,build | lint,build'
+        )
         // ── Webhook trigger context (empty when triggered manually) ──────────
         string(
             name: 'GITHUB_ISSUE_NUMBER',
@@ -77,6 +83,18 @@ pipeline {
                     } else {
                         echo "=== [MASTER] Triggered manually ==="
                     }
+
+                    // Parse PIPELINE_STAGES into per-stage flags.
+                    // FULL_PIPELINE=true  → cross-stage gating is active (lint must pass before test, etc.)
+                    // FULL_PIPELINE=false → each requested stage runs independently (no cross-gating)
+                    def s = params.PIPELINE_STAGES ?: 'all'
+                    env.RUN_LINT      = (s == 'all' || s.contains('lint')).toString()
+                    env.RUN_TEST      = (s == 'all' || s.contains('test')).toString()
+                    env.RUN_BUILD     = (s == 'all' || s.contains('build')).toString()
+                    env.FULL_PIPELINE = (s == 'all').toString()
+
+                    echo "=== [MASTER] Pipeline stages : ${s} ==="
+                    echo "=== [MASTER]   RUN_LINT=${env.RUN_LINT}  RUN_TEST=${env.RUN_TEST}  RUN_BUILD=${env.RUN_BUILD}  FULL_PIPELINE=${env.FULL_PIPELINE} ==="
                 }
                 echo "=== [MASTER] Creating isolated Docker network: ${env.PIPELINE_NETWORK} ==="
                 sh "docker network create ${env.PIPELINE_NETWORK} || true"
@@ -85,9 +103,13 @@ pipeline {
 
         // ─────────────────────────────────────────────────────────────────
         // TRIGGER LINT: delegate all lint work to sidequest-lint.
-        // A FAILURE here blocks both Test and Build.
+        // Full pipeline: a FAILURE here blocks both Test and Build.
+        // Partial run:   runs independently; does not gate other stages.
         // ─────────────────────────────────────────────────────────────────
         stage('Trigger Lint') {
+            when {
+                expression { env.RUN_LINT == 'true' }
+            }
             steps {
                 script {
                     echo "=== [MASTER] Triggering downstream job: sidequest-lint ==="
@@ -101,32 +123,37 @@ pipeline {
                             string(name: 'GITHUB_ISSUE_TITLE',     value: "${params.GITHUB_ISSUE_TITLE}"),
                             string(name: 'TRIGGERED_BY',           value: "${params.TRIGGERED_BY}")
                         ],
-                        propagate: false,   // capture result ourselves; do NOT fail master immediately
+                        propagate: false,
                         wait: true
                     )
 
                     env.LINT_RESULT = lintJob.result
                     echo "=== [MASTER] sidequest-lint finished with result: ${env.LINT_RESULT} ==="
 
+                    // In a full pipeline, lint failure blocks Test and Build.
+                    // In a partial run (lint only) it just marks master FAILURE.
                     if (env.LINT_RESULT != 'SUCCESS') {
-                        // Propagate failure to master so the final build status is FAILURE.
-                        // when{} expressions on downstream stages will prevent them from running.
                         currentBuild.result = 'FAILURE'
-                        error("[MASTER] Lint FAILED — Test and Build stages are SKIPPED.")
+                        if (env.FULL_PIPELINE == 'true') {
+                            error("[MASTER] Lint FAILED — Test and Build stages are SKIPPED.")
+                        }
                     }
                 }
             }
         }
 
         // ─────────────────────────────────────────────────────────────────
-        // TRIGGER TEST: only runs when lint succeeded.
-        // UNSTABLE result → Build still runs (tests failed but code compiled).
-        // FAILURE result  → Build is skipped.
+        // TRIGGER TEST
+        // Full pipeline: only runs when lint succeeded; FAILURE skips Build.
+        // Partial run:   runs independently regardless of lint result.
         // ─────────────────────────────────────────────────────────────────
         stage('Trigger Test') {
             when {
-                // Skip cleanly (no error thrown) if lint did not pass.
-                expression { env.LINT_RESULT == 'SUCCESS' }
+                // Run when TEST is requested AND (not a full pipeline OR lint passed).
+                expression {
+                    env.RUN_TEST == 'true' &&
+                    !(env.FULL_PIPELINE == 'true' && env.LINT_RESULT == 'FAILURE')
+                }
             }
             steps {
                 script {
@@ -149,28 +176,29 @@ pipeline {
                     echo "=== [MASTER] sidequest-test finished with result: ${env.TEST_RESULT} ==="
 
                     if (env.TEST_RESULT == 'UNSTABLE') {
-                        // Mark master UNSTABLE but do not throw — Build stage will still run.
                         currentBuild.result = 'UNSTABLE'
-                        echo "[MASTER] Tests UNSTABLE — Build will still run."
+                        echo "[MASTER] Tests UNSTABLE — Build will still run (if requested)."
                     } else if (env.TEST_RESULT != 'SUCCESS') {
-                        // Hard failure: skip Build.
                         currentBuild.result = 'FAILURE'
-                        error("[MASTER] Tests FAILED — Build stage is SKIPPED.")
+                        if (env.FULL_PIPELINE == 'true') {
+                            error("[MASTER] Tests FAILED — Build stage is SKIPPED.")
+                        }
                     }
                 }
             }
         }
 
         // ─────────────────────────────────────────────────────────────────
-        // TRIGGER BUILD: runs when lint passed AND tests did not hard-fail.
-        // (SUCCESS or UNSTABLE test results both proceed here.)
+        // TRIGGER BUILD
+        // Full pipeline: runs when lint passed AND tests did not hard-fail.
+        // Partial run:   runs independently regardless of other stage results.
         // ─────────────────────────────────────────────────────────────────
         stage('Trigger Build') {
             when {
-                allOf {
-                    expression { env.LINT_RESULT == 'SUCCESS' }
-                    // Allow UNSTABLE (test warnings) but not FAILURE or null.
-                    expression { env.TEST_RESULT != 'FAILURE' && env.TEST_RESULT != null }
+                expression {
+                    env.RUN_BUILD == 'true' &&
+                    !(env.FULL_PIPELINE == 'true' && env.LINT_RESULT == 'FAILURE') &&
+                    !(env.FULL_PIPELINE == 'true' && env.TEST_RESULT == 'FAILURE')
                 }
             }
             steps {
@@ -237,6 +265,7 @@ pipeline {
                     def commentBody = """## ${overallEmoji} Jenkins CI Report \u2014 Build #${BUILD_NUMBER}
 
 **Triggered by:** Issue #${params.GITHUB_ISSUE_NUMBER} \u2014 \"${params.GITHUB_ISSUE_TITLE}\"
+**Stages requested:** `${params.PIPELINE_STAGES ?: 'all'}`
 
 | Stage | Result |
 |-------|--------|
