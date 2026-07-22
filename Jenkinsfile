@@ -96,7 +96,10 @@ pipeline {
                         job: 'sidequest-lint',
                         parameters: [
                             string(name: 'UPSTREAM_BUILD_NUMBER', value: "${BUILD_NUMBER}"),
-                            string(name: 'PIPELINE_NETWORK',       value: "${env.PIPELINE_NETWORK}")
+                            string(name: 'PIPELINE_NETWORK',       value: "${env.PIPELINE_NETWORK}"),
+                            string(name: 'GITHUB_ISSUE_NUMBER',    value: "${params.GITHUB_ISSUE_NUMBER}"),
+                            string(name: 'GITHUB_ISSUE_TITLE',     value: "${params.GITHUB_ISSUE_TITLE}"),
+                            string(name: 'TRIGGERED_BY',           value: "${params.TRIGGERED_BY}")
                         ],
                         propagate: false,   // capture result ourselves; do NOT fail master immediately
                         wait: true
@@ -133,7 +136,10 @@ pipeline {
                         job: 'sidequest-test',
                         parameters: [
                             string(name: 'UPSTREAM_BUILD_NUMBER', value: "${BUILD_NUMBER}"),
-                            string(name: 'PIPELINE_NETWORK',       value: "${env.PIPELINE_NETWORK}")
+                            string(name: 'PIPELINE_NETWORK',       value: "${env.PIPELINE_NETWORK}"),
+                            string(name: 'GITHUB_ISSUE_NUMBER',    value: "${params.GITHUB_ISSUE_NUMBER}"),
+                            string(name: 'GITHUB_ISSUE_TITLE',     value: "${params.GITHUB_ISSUE_TITLE}"),
+                            string(name: 'TRIGGERED_BY',           value: "${params.TRIGGERED_BY}")
                         ],
                         propagate: false,
                         wait: true
@@ -175,7 +181,10 @@ pipeline {
                         job: 'sidequest-build',
                         parameters: [
                             string(name: 'UPSTREAM_BUILD_NUMBER', value: "${BUILD_NUMBER}"),
-                            string(name: 'PIPELINE_NETWORK',       value: "${env.PIPELINE_NETWORK}")
+                            string(name: 'PIPELINE_NETWORK',       value: "${env.PIPELINE_NETWORK}"),
+                            string(name: 'GITHUB_ISSUE_NUMBER',    value: "${params.GITHUB_ISSUE_NUMBER}"),
+                            string(name: 'GITHUB_ISSUE_TITLE',     value: "${params.GITHUB_ISSUE_TITLE}"),
+                            string(name: 'TRIGGERED_BY',           value: "${params.TRIGGERED_BY}")
                         ],
                         propagate: false,
                         wait: true

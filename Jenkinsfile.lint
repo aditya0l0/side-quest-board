@@ -51,6 +51,16 @@ pipeline {
     }
 
     stages {
+        stage('Validate') {
+            steps {
+                script {
+                    if (!params.UPSTREAM_BUILD_NUMBER || !params.PIPELINE_NETWORK) {
+                        error("[LINT] Required parameters missing. This job must be triggered by sidequest-master, not run directly.")
+                    }
+                }
+            }
+        }
+
         stage('Lint Backend') {
             steps {
                 script {

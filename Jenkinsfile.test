@@ -53,6 +53,16 @@ pipeline {
     }
 
     stages {
+        stage('Validate') {
+            steps {
+                script {
+                    if (!params.UPSTREAM_BUILD_NUMBER || !params.PIPELINE_NETWORK) {
+                        error("[TEST] Required parameters missing. This job must be triggered by sidequest-master, not run directly.")
+                    }
+                }
+            }
+        }
+
         stage('Test Backend') {
             steps {
                 script {
