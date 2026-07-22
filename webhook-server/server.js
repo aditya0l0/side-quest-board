@@ -20,25 +20,25 @@
 'use strict';
 
 const express = require('express');
-const crypto  = require('crypto');
-const axios   = require('axios');
+const crypto = require('crypto');
+const axios = require('axios');
 require('dotenv').config();
 
 const app = express();
 
 // ─── Configuration ────────────────────────────────────────────────────────────
-const PORT           = process.env.PORT           || 3000;
+const PORT = process.env.PORT || 3000;
 const WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET;
-const JENKINS_URL    = process.env.JENKINS_URL;
-const JENKINS_USER   = process.env.JENKINS_USER;
-const JENKINS_TOKEN  = process.env.JENKINS_API_TOKEN;
+const JENKINS_URL = process.env.JENKINS_URL;
+const JENKINS_USER = process.env.JENKINS_USER;
+const JENKINS_TOKEN = process.env.JENKINS_API_TOKEN;
 
 // Label → Jenkins job name mapping
 const LABEL_TO_JOB = {
-    'ci:lint'  : 'sidequest-lint',
-    'ci:test'  : 'sidequest-test',
-    'ci:build' : 'sidequest-build',
-    'ci:all'   : 'sidequest-master',
+    'ci:lint': 'sidequest-lint',
+    'ci:test': 'sidequest-test',
+    'ci:build': 'sidequest-build',
+    'ci:all': 'sidequest-master',
 };
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ function verifySignature(req) {
         return false;
     }
 
-    const hmac   = crypto.createHmac('sha256', WEBHOOK_SECRET);
+    const hmac = crypto.createHmac('sha256', WEBHOOK_SECRET);
     const digest = 'sha256=' + hmac.update(req.body).digest('hex');
 
     try {
@@ -77,7 +77,7 @@ function verifySignature(req) {
  */
 async function triggerJenkinsJob(jobName, params = {}) {
     const hasParams = Object.keys(params).length > 0;
-    const endpoint  = hasParams
+    const endpoint = hasParams
         ? `${JENKINS_URL}/job/${encodeURIComponent(jobName)}/buildWithParameters`
         : `${JENKINS_URL}/job/${encodeURIComponent(jobName)}/build`;
 
@@ -111,7 +111,7 @@ app.post('/webhook/github', async (req, res) => {
         return res.status(400).json({ error: 'Invalid JSON in request body' });
     }
 
-    const event  = req.headers['x-github-event'];
+    const event = req.headers['x-github-event'];
     const action = payload.action;
 
     console.log(`[webhook] Received event="${event}" action="${action}"`);
@@ -121,10 +121,10 @@ app.post('/webhook/github', async (req, res) => {
         return res.status(200).json({ message: `Event "${event}.${action}" ignored` });
     }
 
-    const labelName  = payload.label?.name   ?? '(unknown)';
-    const issueNum   = payload.issue?.number ?? 0;
-    const issueTitle = payload.issue?.title  ?? '';
-    const repoName   = payload.repository?.full_name ?? '';
+    const labelName = payload.label?.name ?? '(unknown)';
+    const issueNum = payload.issue?.number ?? 0;
+    const issueTitle = payload.issue?.title ?? '';
+    const repoName = payload.repository?.full_name ?? '';
 
     console.log(`[webhook] Issue #${issueNum} in "${repoName}" labeled: "${labelName}"`);
     console.log(`[webhook] Issue title: "${issueTitle}"`);
@@ -134,8 +134,8 @@ app.post('/webhook/github', async (req, res) => {
     if (!jobName) {
         console.log(`[webhook] No CI job mapped for label "${labelName}" — ignoring.`);
         return res.status(200).json({
-            message : `No CI job mapped for label: ${labelName}`,
-            label   : labelName,
+            message: `No CI job mapped for label: ${labelName}`,
+            label: labelName,
         });
     }
 
@@ -143,20 +143,20 @@ app.post('/webhook/github', async (req, res) => {
     //    Pass issue context as build parameters so the Jenkinsfile can log them.
     try {
         const buildParams = {
-            GITHUB_ISSUE_NUMBER : String(issueNum),
-            GITHUB_ISSUE_TITLE  : issueTitle,
-            GITHUB_REPO         : repoName,
-            TRIGGERED_BY        : 'github-issue-webhook',
+            GITHUB_ISSUE_NUMBER: String(issueNum),
+            GITHUB_ISSUE_TITLE: issueTitle,
+            GITHUB_REPO: repoName,
+            TRIGGERED_BY: 'github-issue-webhook',
         };
 
         const httpStatus = await triggerJenkinsJob(jobName, buildParams);
 
         console.log(`[webhook] Jenkins responded with HTTP ${httpStatus} for job "${jobName}"`);
         return res.status(200).json({
-            message    : `Triggered Jenkins job: ${jobName}`,
-            job        : jobName,
-            label      : labelName,
-            issue      : issueNum,
+            message: `Triggered Jenkins job: ${jobName}`,
+            job: jobName,
+            label: labelName,
+            issue: issueNum,
             httpStatus,
         });
     } catch (err) {
@@ -166,7 +166,7 @@ app.post('/webhook/github', async (req, res) => {
 
         console.error(`[webhook] Failed to trigger Jenkins job "${jobName}":`, details);
         return res.status(502).json({
-            error   : `Failed to trigger Jenkins job: ${jobName}`,
+            error: `Failed to trigger Jenkins job: ${jobName}`,
             details,
         });
     }
@@ -175,9 +175,9 @@ app.post('/webhook/github', async (req, res) => {
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
     res.json({
-        status  : 'ok',
-        jenkins : JENKINS_URL,
-        mapping : LABEL_TO_JOB,
+        status: 'ok',
+        jenkins: JENKINS_URL,
+        mapping: LABEL_TO_JOB,
     });
 });
 

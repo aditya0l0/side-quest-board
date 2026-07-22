@@ -66,7 +66,7 @@ pipeline {
                         docker run --rm \\
                             --name test-backend-${params.UPSTREAM_BUILD_NUMBER} \\
                             --network ${params.PIPELINE_NETWORK} \\
-                            --volumes-from jenkins \\
+                            -v /var/jenkins_home:/var/jenkins_home \\
                             -w ${WORKSPACE}/backend \\
                             -e SPRING_DATASOURCE_URL="jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1" \\
                             -e SPRING_DATASOURCE_DRIVER_CLASS_NAME="org.h2.Driver" \\
@@ -86,7 +86,7 @@ pipeline {
                         docker run --rm \\
                             --name test-frontend-${params.UPSTREAM_BUILD_NUMBER} \\
                             --network ${params.PIPELINE_NETWORK} \\
-                            --volumes-from jenkins \\
+                            -v /var/jenkins_home:/var/jenkins_home \\
                             -w ${WORKSPACE}/frontend \\
                             node:20-alpine \\
                             sh -c "npm ci --prefer-offline && npm test -- --run"
