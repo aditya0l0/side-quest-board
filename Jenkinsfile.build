@@ -50,9 +50,29 @@ pipeline {
             description: 'GitHub issue title for log context'
         )
         string(
+            name: 'GITHUB_PR_NUMBER',
+            defaultValue: '',
+            description: 'GitHub pull request number that triggered this build'
+        )
+        string(
+            name: 'GITHUB_PR_TITLE',
+            defaultValue: '',
+            description: 'GitHub pull request title for log context'
+        )
+        string(
+            name: 'GITHUB_PR_SHA',
+            defaultValue: '',
+            description: 'GitHub pull request head commit SHA to check out'
+        )
+        string(
+            name: 'GITHUB_PR_HEAD_REF',
+            defaultValue: '',
+            description: 'GitHub pull request head branch ref'
+        )
+        string(
             name: 'TRIGGERED_BY',
             defaultValue: 'manual',
-            description: 'Trigger source: "github-issue-webhook" | "manual"'
+            description: 'Trigger source: "github-issue-webhook" | "github-pr-webhook" | "manual"'
         )
     }
 
@@ -64,11 +84,20 @@ pipeline {
     }
 
     stages {
-        stage('Validate') {
+        stage('Validate & Checkout') {
             steps {
                 script {
                     if (!params.UPSTREAM_BUILD_NUMBER || !params.PIPELINE_NETWORK) {
                         error("[BUILD] Required parameters missing. This job must be triggered by sidequest-master, not run directly.")
+                    }
+                    if (params.TRIGGERED_BY == 'github-pr-webhook') {
+                        echo "=== [BUILD] Triggered by GitHub PR #${params.GITHUB_PR_NUMBER}: \"${params.GITHUB_PR_TITLE}\" (SHA: ${params.GITHUB_PR_SHA}) ==="
+                        if (params.GITHUB_PR_SHA) {
+                            echo "=== [BUILD] Checking out PR head commit: ${params.GITHUB_PR_SHA} ==="
+                            sh "git fetch origin ${params.GITHUB_PR_SHA} && git checkout -f ${params.GITHUB_PR_SHA}"
+                        }
+                    } else if (params.TRIGGERED_BY == 'github-issue-webhook') {
+                        echo "=== [BUILD] Triggered by GitHub Issue #${params.GITHUB_ISSUE_NUMBER}: \"${params.GITHUB_ISSUE_TITLE}\" ==="
                     }
                 }
             }
@@ -76,11 +105,6 @@ pipeline {
 
         stage('Build and Push Docker Images') {
             steps {
-                script {
-                    if (params.TRIGGERED_BY == 'github-issue-webhook') {
-                        echo "=== [BUILD] Triggered by GitHub Issue #${params.GITHUB_ISSUE_NUMBER}: \"${params.GITHUB_ISSUE_TITLE}\" ==="
-                    }
-                }
                 echo "=== [BUILD] Building Docker images (upstream build #${params.UPSTREAM_BUILD_NUMBER}) ==="
                 echo "    → Target backend  image : ${env.BACKEND_IMAGE}"
                 echo "    → Target frontend image : ${env.FRONTEND_IMAGE}"

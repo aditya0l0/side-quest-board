@@ -58,27 +58,54 @@ pipeline {
             defaultValue: '',
             description: 'GitHub issue title for log context'
         )
+        // ── Pull Request context (empty when triggered manually or by issue) ──
+        string(
+            name: 'GITHUB_PR_NUMBER',
+            defaultValue: '',
+            description: 'GitHub pull request number that triggered this build'
+        )
+        string(
+            name: 'GITHUB_PR_TITLE',
+            defaultValue: '',
+            description: 'GitHub pull request title for log context'
+        )
+        string(
+            name: 'GITHUB_PR_SHA',
+            defaultValue: '',
+            description: 'GitHub pull request head commit SHA to check out'
+        )
+        string(
+            name: 'GITHUB_PR_HEAD_REF',
+            defaultValue: '',
+            description: 'GitHub pull request head branch ref'
+        )
         string(
             name: 'GITHUB_REPO',
             defaultValue: '',
-            description: 'Full repo name (owner/repo) used to post GitHub issue comments'
+            description: 'Full repo name (owner/repo) used to post GitHub comments'
         )
         string(
             name: 'TRIGGERED_BY',
             defaultValue: 'manual',
-            description: 'Trigger source: "github-issue-webhook" | "manual"'
+            description: 'Trigger source: "github-issue-webhook" | "github-pr-webhook" | "manual"'
         )
     }
 
     stages {
 
         // ─────────────────────────────────────────────────────────────────
-        // PREPARE: stand up the shared Docker network for this build run.
+        // PREPARE: stand up the shared Docker network and checkout PR head commit if applicable.
         // ─────────────────────────────────────────────────────────────────
         stage('Prepare') {
             steps {
                 script {
-                    if (params.TRIGGERED_BY == 'github-issue-webhook') {
+                    if (params.TRIGGERED_BY == 'github-pr-webhook') {
+                        echo "=== [MASTER] Triggered by GitHub PR #${params.GITHUB_PR_NUMBER}: \"${params.GITHUB_PR_TITLE}\" (SHA: ${params.GITHUB_PR_SHA}) ==="
+                        if (params.GITHUB_PR_SHA) {
+                            echo "=== [MASTER] Checking out PR head commit: ${params.GITHUB_PR_SHA} ==="
+                            sh "git fetch origin ${params.GITHUB_PR_SHA} && git checkout -f ${params.GITHUB_PR_SHA}"
+                        }
+                    } else if (params.TRIGGERED_BY == 'github-issue-webhook') {
                         echo "=== [MASTER] Triggered by GitHub Issue #${params.GITHUB_ISSUE_NUMBER}: \"${params.GITHUB_ISSUE_TITLE}\" ==="
                     } else {
                         echo "=== [MASTER] Triggered manually ==="
@@ -121,6 +148,11 @@ pipeline {
                             string(name: 'PIPELINE_NETWORK',       value: "${env.PIPELINE_NETWORK}"),
                             string(name: 'GITHUB_ISSUE_NUMBER',    value: "${params.GITHUB_ISSUE_NUMBER}"),
                             string(name: 'GITHUB_ISSUE_TITLE',     value: "${params.GITHUB_ISSUE_TITLE}"),
+                            string(name: 'GITHUB_PR_NUMBER',       value: "${params.GITHUB_PR_NUMBER}"),
+                            string(name: 'GITHUB_PR_TITLE',        value: "${params.GITHUB_PR_TITLE}"),
+                            string(name: 'GITHUB_PR_SHA',          value: "${params.GITHUB_PR_SHA}"),
+                            string(name: 'GITHUB_PR_HEAD_REF',     value: "${params.GITHUB_PR_HEAD_REF}"),
+                            string(name: 'GITHUB_REPO',            value: "${params.GITHUB_REPO}"),
                             string(name: 'TRIGGERED_BY',           value: "${params.TRIGGERED_BY}")
                         ],
                         propagate: false,
@@ -166,6 +198,11 @@ pipeline {
                             string(name: 'PIPELINE_NETWORK',       value: "${env.PIPELINE_NETWORK}"),
                             string(name: 'GITHUB_ISSUE_NUMBER',    value: "${params.GITHUB_ISSUE_NUMBER}"),
                             string(name: 'GITHUB_ISSUE_TITLE',     value: "${params.GITHUB_ISSUE_TITLE}"),
+                            string(name: 'GITHUB_PR_NUMBER',       value: "${params.GITHUB_PR_NUMBER}"),
+                            string(name: 'GITHUB_PR_TITLE',        value: "${params.GITHUB_PR_TITLE}"),
+                            string(name: 'GITHUB_PR_SHA',          value: "${params.GITHUB_PR_SHA}"),
+                            string(name: 'GITHUB_PR_HEAD_REF',     value: "${params.GITHUB_PR_HEAD_REF}"),
+                            string(name: 'GITHUB_REPO',            value: "${params.GITHUB_REPO}"),
                             string(name: 'TRIGGERED_BY',           value: "${params.TRIGGERED_BY}")
                         ],
                         propagate: false,
@@ -212,6 +249,11 @@ pipeline {
                             string(name: 'PIPELINE_NETWORK',       value: "${env.PIPELINE_NETWORK}"),
                             string(name: 'GITHUB_ISSUE_NUMBER',    value: "${params.GITHUB_ISSUE_NUMBER}"),
                             string(name: 'GITHUB_ISSUE_TITLE',     value: "${params.GITHUB_ISSUE_TITLE}"),
+                            string(name: 'GITHUB_PR_NUMBER',       value: "${params.GITHUB_PR_NUMBER}"),
+                            string(name: 'GITHUB_PR_TITLE',        value: "${params.GITHUB_PR_TITLE}"),
+                            string(name: 'GITHUB_PR_SHA',          value: "${params.GITHUB_PR_SHA}"),
+                            string(name: 'GITHUB_PR_HEAD_REF',     value: "${params.GITHUB_PR_HEAD_REF}"),
+                            string(name: 'GITHUB_REPO',            value: "${params.GITHUB_REPO}"),
                             string(name: 'TRIGGERED_BY',           value: "${params.TRIGGERED_BY}")
                         ],
                         propagate: false,
@@ -251,8 +293,12 @@ pipeline {
 ─────────────────────────────────────────────────────────────
 """
 
-                // ── Post GitHub issue comment (webhook-triggered runs only) ────
-                if (params.TRIGGERED_BY == 'github-issue-webhook' && params.GITHUB_ISSUE_NUMBER) {
+                // ── Post GitHub comment (webhook-triggered runs only) ────
+                def isPR = (params.TRIGGERED_BY == 'github-pr-webhook')
+                def isIssue = (params.TRIGGERED_BY == 'github-issue-webhook')
+                def targetNum = isPR ? params.GITHUB_PR_NUMBER : (isIssue ? params.GITHUB_ISSUE_NUMBER : '')
+
+                if ((isPR || isIssue) && targetNum) {
 
                     // Map a stage result string to a status emoji
                     def statusEmoji = { String s ->
@@ -262,9 +308,13 @@ pipeline {
                     def overallStatus = currentBuild.currentResult ?: 'FAILURE'
                     def overallEmoji  = statusEmoji(overallStatus)
 
+                    def triggerDetails = isPR ?
+                        "**Triggered by:** Pull Request #${params.GITHUB_PR_NUMBER} \u2014 \"${params.GITHUB_PR_TITLE}\"\n**Commit:** `${params.GITHUB_PR_SHA}`" :
+                        "**Triggered by:** Issue #${params.GITHUB_ISSUE_NUMBER} \u2014 \"${params.GITHUB_ISSUE_TITLE}\""
+
                     def commentBody = """## ${overallEmoji} Jenkins CI Report \u2014 Build #${BUILD_NUMBER}
 
-**Triggered by:** Issue #${params.GITHUB_ISSUE_NUMBER} \u2014 \"${params.GITHUB_ISSUE_TITLE}\"
+${triggerDetails}
 **Stages requested:** `${params.PIPELINE_STAGES ?: 'all'}`
 
 | Stage | Result |
@@ -289,12 +339,12 @@ pipeline {
                                         -H "Authorization: token \${GH_TOKEN}" \\
                                         -H "Content-Type: application/json" \\
                                         --data @gh_comment.json \\
-                                        "https://api.github.com/repos/${params.GITHUB_REPO}/issues/${params.GITHUB_ISSUE_NUMBER}/comments"
+                                        "https://api.github.com/repos/${params.GITHUB_REPO}/issues/${targetNum}/comments"
                                 """
                             ).trim()
-                            echo "[MASTER] GitHub Issues API returned HTTP ${httpCode}"
+                            echo "[MASTER] GitHub API returned HTTP ${httpCode}"
                         }
-                        echo "[MASTER] \u2705 Comment posted on Issue #${params.GITHUB_ISSUE_NUMBER} in ${params.GITHUB_REPO}"
+                        echo "[MASTER] \u2705 Comment posted on ${isPR ? 'PR' : 'Issue'} #${targetNum} in ${params.GITHUB_REPO}"
                     } catch (err) {
                         echo "[MASTER] \u26a0\ufe0f Could not post GitHub comment (check 'github-pat-issue-comment' credential): ${err.message}"
                     }

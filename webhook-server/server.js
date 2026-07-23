@@ -157,6 +157,42 @@ async function triggerMaster(pipelineStages, issueData) {
 }
 
 /**
+ * Triggers the sidequest-master Jenkins job for Pull Request events with
+ * PIPELINE_STAGES=all.
+ *
+ * @param {object} prData  { prNum, prTitle, prSha, prHeadRef, repoName }
+ * @returns {number}       HTTP status returned by Jenkins (201 = queued)
+ */
+async function triggerMasterForPR(prData) {
+    const { prNum, prTitle, prSha, prHeadRef, repoName } = prData;
+    const jobName  = 'sidequest-master';
+    const endpoint = `${JENKINS_URL}/job/${encodeURIComponent(jobName)}/buildWithParameters`;
+
+    const buildParams = {
+        PIPELINE_STAGES:     'all',
+        GITHUB_PR_NUMBER:    String(prNum),
+        GITHUB_PR_TITLE:     prTitle,
+        GITHUB_PR_SHA:       prSha,
+        GITHUB_PR_HEAD_REF:  prHeadRef,
+        GITHUB_REPO:         repoName,
+        TRIGGERED_BY:        'github-pr-webhook',
+    };
+
+    console.log(`[webhook] → Triggering sidequest-master for PR #${prNum}`);
+    console.log(`[webhook]   PIPELINE_STAGES : all`);
+    console.log(`[webhook]   PR               : #${prNum} "${prTitle}" (${prHeadRef}@${prSha}) in ${repoName}`);
+
+    const response = await axios.post(endpoint, null, {
+        params: buildParams,
+        auth:   { username: JENKINS_USER, password: JENKINS_TOKEN },
+        validateStatus: (s) => s >= 200 && s < 400,
+    });
+
+    console.log(`[webhook] Jenkins responded HTTP ${response.status} for sidequest-master (PR #${prNum})`);
+    return response.status;
+}
+
+/**
  * Schedules (or re-schedules) a master build for the given issue.
  * If a pending timer already exists for this issue it is reset, giving a fresh
  * 15-second window for additional labels to arrive.
@@ -227,7 +263,46 @@ app.post('/webhook/github', async (req, res) => {
 
     console.log(`[webhook] Received event="${event}" action="${action}"`);
 
-    // 3. Only handle issues events ─────────────────────────────────────────────
+    // 3. Handle Pull Request events ─────────────────────────────────────────────
+    if (event === 'pull_request') {
+        const targetBranch = payload.pull_request?.base?.ref;
+        if (targetBranch !== 'main') {
+            console.log(`[webhook] PR target branch "${targetBranch}" is not "main" — ignoring.`);
+            return res.status(200).json({ message: `PR target branch "${targetBranch}" is not main; ignored` });
+        }
+
+        if (!['opened', 'synchronize', 'reopened'].includes(action)) {
+            console.log(`[webhook] PR action "${action}" ignored.`);
+            return res.status(200).json({ message: `PR action "${action}" ignored` });
+        }
+
+        const prNum     = payload.pull_request?.number ?? 0;
+        const prTitle   = payload.pull_request?.title  ?? '';
+        const prSha     = payload.pull_request?.head?.sha ?? '';
+        const prHeadRef = payload.pull_request?.head?.ref ?? '';
+        const repoName  = payload.repository?.full_name ?? '';
+        const prData    = { prNum, prTitle, prSha, prHeadRef, repoName };
+
+        console.log(`[webhook] PR #${prNum} "${prTitle}" (${prHeadRef}@${prSha}) ${action} against main`);
+
+        try {
+            await triggerMasterForPR(prData);
+            return res.status(200).json({
+                message: `Jenkins CI triggered for PR #${prNum}`,
+                pr:       prNum,
+                action:   action,
+                sha:      prSha,
+            });
+        } catch (err) {
+            const details = err.response
+                ? `HTTP ${err.response.status} — ${JSON.stringify(err.response.data)}`
+                : err.message;
+            console.error(`[webhook] Failed to trigger sidequest-master for PR #${prNum}:`, details);
+            return res.status(500).json({ error: `Failed to trigger Jenkins for PR #${prNum}`, details });
+        }
+    }
+
+    // 4. Handle Issues events ──────────────────────────────────────────────────
     if (event !== 'issues') {
         return res.status(200).json({ message: `Event "${event}" ignored` });
     }
