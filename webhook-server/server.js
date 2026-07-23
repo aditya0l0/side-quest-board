@@ -200,10 +200,10 @@ async function triggerMasterForPR(prData) {
 function parsePRCommentCommands(commentBody) {
     if (!commentBody || typeof commentBody !== 'string') return null;
 
-    const matches = commentBody.match(/(?:^|\s)\/(lint|test|build|all)(?=\s|$)/gi);
+    const matches = commentBody.match(/\/(lint|test|build|all)\b/gi);
     if (!matches) return null;
 
-    const commands = new Set(matches.map((m) => m.trim().substring(1).toLowerCase()));
+    const commands = new Set(matches.map((m) => m.substring(1).toLowerCase()));
     if (commands.size === 0) return null;
 
     if (commands.has('all')) return 'all';

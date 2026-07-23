@@ -310,8 +310,18 @@ pipeline {
                         s == 'SUCCESS' ? '\u2705' : s == 'UNSTABLE' ? '\u26a0\ufe0f' : s == 'SKIPPED' ? '\u23ed\ufe0f' : '\u274c'
                     }
 
-                    def overallStatus = currentBuild.currentResult ?: 'FAILURE'
-                    def overallEmoji  = statusEmoji(overallStatus)
+                    // Compute overall status based on requested stages
+                    def requestedFailed = (env.RUN_LINT == 'true' && env.LINT_RESULT == 'FAILURE') ||
+                                          (env.RUN_TEST == 'true' && env.TEST_RESULT == 'FAILURE') ||
+                                          (env.RUN_BUILD == 'true' && env.BUILD_RESULT == 'FAILURE')
+
+                    def requestedUnstable = (env.RUN_TEST == 'true' && env.TEST_RESULT == 'UNSTABLE')
+
+                    def overallStatus = requestedFailed ? 'FAILURE' : (requestedUnstable ? 'UNSTABLE' : 'SUCCESS')
+                    if (currentBuild.result == null) {
+                        currentBuild.result = overallStatus
+                    }
+                    def overallEmoji = statusEmoji(overallStatus)
 
                     def triggerDetails = isPRComment ?
                         "**Triggered by:** PR Comment on #${params.GITHUB_PR_NUMBER} \u2014 \"${params.GITHUB_PR_TITLE}\"\n**Commit:** `${params.GITHUB_PR_SHA ?: 'head'}`" :
