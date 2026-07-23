@@ -90,11 +90,14 @@ pipeline {
                     if (!params.UPSTREAM_BUILD_NUMBER || !params.PIPELINE_NETWORK) {
                         error("[BUILD] Required parameters missing. This job must be triggered by sidequest-master, not run directly.")
                     }
-                    if (params.TRIGGERED_BY == 'github-pr-webhook') {
-                        echo "=== [BUILD] Triggered by GitHub PR #${params.GITHUB_PR_NUMBER}: \"${params.GITHUB_PR_TITLE}\" (SHA: ${params.GITHUB_PR_SHA}) ==="
+                    if (params.TRIGGERED_BY == 'github-pr-webhook' || params.TRIGGERED_BY == 'github-comment-webhook') {
+                        echo "=== [BUILD] Triggered by GitHub PR #${params.GITHUB_PR_NUMBER} via ${params.TRIGGERED_BY}: \"${params.GITHUB_PR_TITLE}\" (SHA: ${params.GITHUB_PR_SHA}) ==="
                         if (params.GITHUB_PR_SHA) {
                             echo "=== [BUILD] Checking out PR head commit: ${params.GITHUB_PR_SHA} ==="
                             sh "git fetch origin ${params.GITHUB_PR_SHA} && git checkout -f ${params.GITHUB_PR_SHA}"
+                        } else if (params.GITHUB_PR_NUMBER) {
+                            echo "=== [BUILD] Checking out PR #${params.GITHUB_PR_NUMBER} head ref ==="
+                            sh "git fetch origin pull/${params.GITHUB_PR_NUMBER}/head && git checkout -f FETCH_HEAD"
                         }
                     } else if (params.TRIGGERED_BY == 'github-issue-webhook') {
                         echo "=== [BUILD] Triggered by GitHub Issue #${params.GITHUB_ISSUE_NUMBER}: \"${params.GITHUB_ISSUE_TITLE}\" ==="

@@ -99,11 +99,14 @@ pipeline {
         stage('Prepare') {
             steps {
                 script {
-                    if (params.TRIGGERED_BY == 'github-pr-webhook') {
-                        echo "=== [MASTER] Triggered by GitHub PR #${params.GITHUB_PR_NUMBER}: \"${params.GITHUB_PR_TITLE}\" (SHA: ${params.GITHUB_PR_SHA}) ==="
+                    if (params.TRIGGERED_BY == 'github-pr-webhook' || params.TRIGGERED_BY == 'github-comment-webhook') {
+                        echo "=== [MASTER] Triggered by GitHub PR #${params.GITHUB_PR_NUMBER} via ${params.TRIGGERED_BY}: \"${params.GITHUB_PR_TITLE}\" (SHA: ${params.GITHUB_PR_SHA}) ==="
                         if (params.GITHUB_PR_SHA) {
                             echo "=== [MASTER] Checking out PR head commit: ${params.GITHUB_PR_SHA} ==="
                             sh "git fetch origin ${params.GITHUB_PR_SHA} && git checkout -f ${params.GITHUB_PR_SHA}"
+                        } else if (params.GITHUB_PR_NUMBER) {
+                            echo "=== [MASTER] Checking out PR #${params.GITHUB_PR_NUMBER} head ref ==="
+                            sh "git fetch origin pull/${params.GITHUB_PR_NUMBER}/head && git checkout -f FETCH_HEAD"
                         }
                     } else if (params.TRIGGERED_BY == 'github-issue-webhook') {
                         echo "=== [MASTER] Triggered by GitHub Issue #${params.GITHUB_ISSUE_NUMBER}: \"${params.GITHUB_ISSUE_TITLE}\" ==="
@@ -294,8 +297,10 @@ pipeline {
 """
 
                 // ── Post GitHub comment (webhook-triggered runs only) ────
-                def isPR = (params.TRIGGERED_BY == 'github-pr-webhook')
+                def isPRWeb = (params.TRIGGERED_BY == 'github-pr-webhook')
+                def isPRComment = (params.TRIGGERED_BY == 'github-comment-webhook')
                 def isIssue = (params.TRIGGERED_BY == 'github-issue-webhook')
+                def isPR = (isPRWeb || isPRComment)
                 def targetNum = isPR ? params.GITHUB_PR_NUMBER : (isIssue ? params.GITHUB_ISSUE_NUMBER : '')
 
                 if ((isPR || isIssue) && targetNum) {
@@ -308,9 +313,11 @@ pipeline {
                     def overallStatus = currentBuild.currentResult ?: 'FAILURE'
                     def overallEmoji  = statusEmoji(overallStatus)
 
-                    def triggerDetails = isPR ?
-                        "**Triggered by:** Pull Request #${params.GITHUB_PR_NUMBER} \u2014 \"${params.GITHUB_PR_TITLE}\"\n**Commit:** `${params.GITHUB_PR_SHA}`" :
-                        "**Triggered by:** Issue #${params.GITHUB_ISSUE_NUMBER} \u2014 \"${params.GITHUB_ISSUE_TITLE}\""
+                    def triggerDetails = isPRComment ?
+                        "**Triggered by:** PR Comment on #${params.GITHUB_PR_NUMBER} \u2014 \"${params.GITHUB_PR_TITLE}\"\n**Commit:** `${params.GITHUB_PR_SHA ?: 'head'}`" :
+                        (isPRWeb ?
+                            "**Triggered by:** Pull Request #${params.GITHUB_PR_NUMBER} \u2014 \"${params.GITHUB_PR_TITLE}\"\n**Commit:** `${params.GITHUB_PR_SHA ?: 'head'}`" :
+                            "**Triggered by:** Issue #${params.GITHUB_ISSUE_NUMBER} \u2014 \"${params.GITHUB_ISSUE_TITLE}\"")
 
                     def commentBody = """## ${overallEmoji} Jenkins CI Report \u2014 Build #${BUILD_NUMBER}
 

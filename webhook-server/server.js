@@ -42,6 +42,7 @@ const WEBHOOK_SECRET  = process.env.GITHUB_WEBHOOK_SECRET;
 const JENKINS_URL     = process.env.JENKINS_URL;
 const JENKINS_USER    = process.env.JENKINS_USER;
 const JENKINS_TOKEN   = process.env.JENKINS_API_TOKEN;
+const GITHUB_TOKEN    = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
 const TRIGGER_DELAY   = parseInt(process.env.TRIGGER_DELAY_MS ?? '15000', 10);
 
 // CI label → pipeline stage token
@@ -193,6 +194,118 @@ async function triggerMasterForPR(prData) {
 }
 
 /**
+ * Parses a comment body for CI slash commands (/lint, /test, /build, /all).
+ * Returns canonical stage string (e.g., 'all', 'lint,test', 'lint,build') or null if no command found.
+ */
+function parsePRCommentCommands(commentBody) {
+    if (!commentBody || typeof commentBody !== 'string') return null;
+
+    const matches = commentBody.match(/(?:^|\s)\/(lint|test|build|all)(?=\s|$)/gi);
+    if (!matches) return null;
+
+    const commands = new Set(matches.map((m) => m.trim().substring(1).toLowerCase()));
+    if (commands.size === 0) return null;
+
+    if (commands.has('all')) return 'all';
+
+    const canonicalOrder = ['lint', 'test', 'build'];
+    const requested = canonicalOrder.filter((stage) => commands.has(stage));
+
+    if (requested.length === 0) return null;
+    if (requested.length === 3) return 'all';
+
+    return requested.join(',');
+}
+
+/**
+ * Fetches pull request details (head SHA, head branch ref, and title) from GitHub REST API.
+ */
+async function fetchPRDetails(repoName, prNum) {
+    const url = `https://api.github.com/repos/${repoName}/pulls/${prNum}`;
+    const headers = {
+        'User-Agent': 'sidequest-webhook-server',
+        'Accept':     'application/vnd.github+json',
+    };
+    if (GITHUB_TOKEN) {
+        headers['Authorization'] = `token ${GITHUB_TOKEN}`;
+    }
+
+    try {
+        const res = await axios.get(url, { headers });
+        return {
+            prSha:     res.data?.head?.sha  || '',
+            prHeadRef: res.data?.head?.ref  || '',
+            prTitle:   res.data?.title      || '',
+        };
+    } catch (err) {
+        console.warn(`[webhook] Could not fetch PR #${prNum} details via GitHub API: ${err.message}`);
+        return { prSha: '', prHeadRef: '', prTitle: '' };
+    }
+}
+
+/**
+ * Adds an emoji reaction (e.g. "eyes") to a GitHub issue/PR comment.
+ */
+async function addCommentReaction(repoName, commentId, reaction = 'eyes') {
+    if (!commentId || !repoName) return;
+
+    const url = `https://api.github.com/repos/${repoName}/issues/comments/${commentId}/reactions`;
+    const headers = {
+        'User-Agent': 'sidequest-webhook-server',
+        'Accept':     'application/vnd.github+json',
+    };
+    if (GITHUB_TOKEN) {
+        headers['Authorization'] = `token ${GITHUB_TOKEN}`;
+    } else {
+        console.warn('[webhook] Skipping reaction (GITHUB_TOKEN / GH_TOKEN not set).');
+        return;
+    }
+
+    try {
+        await axios.post(url, { content: reaction }, { headers });
+        console.log(`[webhook] Added "${reaction}" reaction to comment #${commentId}`);
+    } catch (err) {
+        console.warn(`[webhook] Failed to add reaction to comment #${commentId}: ${err.message}`);
+    }
+}
+
+/**
+ * Triggers the sidequest-master Jenkins job for PR comment triggers.
+ *
+ * @param {object} prData  { prNum, prTitle, prSha, prHeadRef, repoName, stages, commentId }
+ * @returns {number}       HTTP status returned by Jenkins (201 = queued)
+ */
+async function triggerMasterForPRComment(prData) {
+    const { prNum, prTitle, prSha, prHeadRef, repoName, stages, commentId } = prData;
+    const jobName  = 'sidequest-master';
+    const endpoint = `${JENKINS_URL}/job/${encodeURIComponent(jobName)}/buildWithParameters`;
+
+    const buildParams = {
+        PIPELINE_STAGES:     stages,
+        GITHUB_PR_NUMBER:    String(prNum),
+        GITHUB_PR_TITLE:     prTitle,
+        GITHUB_PR_SHA:       prSha,
+        GITHUB_PR_HEAD_REF:  prHeadRef,
+        GITHUB_REPO:         repoName,
+        GITHUB_COMMENT_ID:   String(commentId || ''),
+        TRIGGERED_BY:        'github-comment-webhook',
+    };
+
+    console.log(`[webhook] → Triggering sidequest-master for PR comment #${commentId} on PR #${prNum}`);
+    console.log(`[webhook]   PIPELINE_STAGES : ${stages}`);
+    console.log(`[webhook]   PR               : #${prNum} "${prTitle}" (${prHeadRef}@${prSha}) in ${repoName}`);
+
+    const response = await axios.post(endpoint, null, {
+        params: buildParams,
+        auth:   { username: JENKINS_USER, password: JENKINS_TOKEN },
+        validateStatus: (s) => s >= 200 && s < 400,
+    });
+
+    console.log(`[webhook] Jenkins responded HTTP ${response.status} for sidequest-master (PR Comment #${commentId})`);
+    return response.status;
+}
+
+/**
  * Schedules (or re-schedules) a master build for the given issue.
  * If a pending timer already exists for this issue it is reset, giving a fresh
  * 15-second window for additional labels to arrive.
@@ -263,7 +376,55 @@ app.post('/webhook/github', async (req, res) => {
 
     console.log(`[webhook] Received event="${event}" action="${action}"`);
 
-    // 3. Handle Pull Request events ─────────────────────────────────────────────
+    // 3. Check for CI slash commands across any event type (pull_request, issue_comment, pull_request_review, etc.) ─────
+    const commentBody = payload.comment?.body || payload.review?.body || (action === 'edited' ? payload.pull_request?.body : null) || '';
+    const stages      = parsePRCommentCommands(commentBody);
+
+    if (stages) {
+        const prNum     = payload.pull_request?.number ?? payload.issue?.number ?? 0;
+        const repoName  = payload.repository?.full_name ?? '';
+        const commentId = payload.comment?.id ?? payload.review?.id ?? 0;
+
+        let prSha     = payload.pull_request?.head?.sha ?? '';
+        let prHeadRef = payload.pull_request?.head?.ref ?? '';
+        let prTitle   = payload.pull_request?.title     ?? payload.issue?.title ?? '';
+
+        console.log(`[webhook] Event "${event}" (action="${action}") contains CI command: stages="${stages}" for PR #${prNum}`);
+
+        // React with 👀 to acknowledge comment receipt (if commentId present)
+        if (commentId) {
+            await addCommentReaction(repoName, commentId, 'eyes');
+        }
+
+        // If PR head details missing from payload, fetch via GitHub API
+        if (!prSha && prNum && repoName) {
+            const details = await fetchPRDetails(repoName, prNum);
+            prSha     = details.prSha     || prSha;
+            prHeadRef = details.prHeadRef || prHeadRef;
+            prTitle   = details.prTitle   || prTitle;
+        }
+
+        const prData = { prNum, prTitle, prSha, prHeadRef, repoName, stages, commentId };
+
+        try {
+            await triggerMasterForPRComment(prData);
+            return res.status(200).json({
+                message:   `Jenkins CI triggered for PR #${prNum} comment/command`,
+                pr:         prNum,
+                stages:     stages,
+                commentId:  commentId,
+                sha:        prSha,
+            });
+        } catch (err) {
+            const details = err.response
+                ? `HTTP ${err.response.status} — ${JSON.stringify(err.response.data)}`
+                : err.message;
+            console.error(`[webhook] Failed to trigger sidequest-master for PR comment on #${prNum}:`, details);
+            return res.status(500).json({ error: `Failed to trigger Jenkins for PR #${prNum}`, details });
+        }
+    }
+
+    // 4. Handle standard Pull Request events (opened, synchronize, reopened) ────
     if (event === 'pull_request') {
         const targetBranch = payload.pull_request?.base?.ref;
         if (targetBranch !== 'main') {
