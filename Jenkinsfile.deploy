@@ -101,27 +101,9 @@ pipeline {
         }
 
         // ─────────────────────────────────────────────────────────────────
-        // INSTALL ANSIBLE: pip3 install on the Jenkins agent.
-        // Uses --user to avoid needing root; installs community.docker
-        // collection for the docker_compose_v2 module.
-        // ─────────────────────────────────────────────────────────────────
-        stage('Install Ansible') {
-            steps {
-                echo "=== [DEPLOY] Installing Ansible on Jenkins agent ==="
-                sh '''
-                    pip3 install --user --quiet ansible
-                    # Ensure ~/.local/bin is on PATH
-                    export PATH="$HOME/.local/bin:$PATH"
-                    ansible --version
-
-                    echo "=== [DEPLOY] Installing community.docker Ansible collection ==="
-                    ansible-galaxy collection install community.docker --upgrade
-                '''
-            }
-        }
-
-        // ─────────────────────────────────────────────────────────────────
-        // DEPLOY: run ansible/deploy.yml with credentials injected.
+        // DEPLOY: run ansible/deploy.yml inside a Docker worker container.
+        // Uses python:3.11-alpine (DooD pattern) to avoid requiring Ansible
+        // or python on the Jenkins agent host.
         // ─────────────────────────────────────────────────────────────────
         stage('Run Ansible Deploy') {
             steps {
@@ -144,26 +126,44 @@ pipeline {
                         )
                     ]) {
                         def deployStatus = sh(
-                            label: '[deploy] ansible-playbook deploy.yml',
+                            label: '[deploy-worker] Run Ansible playbook via Docker container',
                             returnStatus: true,
                             script: """
-                                export PATH="\$HOME/.local/bin:\$PATH"
+                                docker run --rm \\
+                                    --name deploy-worker-${params.UPSTREAM_BUILD_NUMBER} \\
+                                    --network ${params.PIPELINE_NETWORK} \\
+                                    --volumes-from jenkins \\
+                                    -e EC2_KEY_FILE="\${EC2_KEY_FILE}" \\
+                                    -e DOCKER_PASS="\${DOCKER_PASS}" \\
+                                    -e DB_PASS="\${DB_PASS}" \\
+                                    -w ${WORKSPACE} \\
+                                    python:3.11-alpine \\
+                                    sh -c "
+                                        echo '=== Installing Ansible & OpenSSH inside deploy worker container ==='
+                                        apk add --no-cache openssh-client bash > /dev/null
+                                        pip install --quiet --no-cache-dir ansible
+                                        ansible-galaxy collection install community.docker > /dev/null
 
-                                ansible-playbook \\
-                                    -i ${ANSIBLE_DIR}/inventory.ini \\
-                                    ${ANSIBLE_DIR}/deploy.yml \\
-                                    --private-key "\${EC2_KEY_FILE}" \\
-                                    -e ansible_host="${params.EC2_HOST}" \\
-                                    -e build_version="${params.UPSTREAM_BUILD_NUMBER}" \\
-                                    -e docker_hub_user="${DOCKER_HUB_USER}" \\
-                                    -e docker_hub_password="\${DOCKER_PASS}" \\
-                                    -e db_password="\${DB_PASS}" \\
-                                    -v
+                                        echo '=== Setting SSH key permissions ==='
+                                        chmod 400 \\"\$EC2_KEY_FILE\\"
+
+                                        echo '=== Executing Ansible deploy playbook ==='
+                                        ansible-playbook \\
+                                            -i ${ANSIBLE_DIR}/inventory.ini \\
+                                            ${ANSIBLE_DIR}/deploy.yml \\
+                                            --private-key \\"\$EC2_KEY_FILE\\" \\
+                                            -e ansible_host='${params.EC2_HOST}' \\
+                                            -e build_version='${params.UPSTREAM_BUILD_NUMBER}' \\
+                                            -e docker_hub_user='${DOCKER_HUB_USER}' \\
+                                            -e docker_hub_password=\\\"\$DOCKER_PASS\\\" \\
+                                            -e db_password=\\\"\$DB_PASS\\\" \\
+                                            -v
+                                    "
                             """
                         )
 
                         if (deployStatus != 0) {
-                            error("[DEPLOY] ansible-playbook FAILED with exit code ${deployStatus}.")
+                            error("[DEPLOY] Ansible deploy worker container FAILED with exit code ${deployStatus}.")
                         }
                     }
                 }
