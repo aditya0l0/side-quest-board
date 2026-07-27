@@ -1,0 +1,182 @@
+
+/*
+ * DOWNSTREAM JOB: sidequest-deploy
+ *
+ * Triggered by:  sidequest-master  (Jenkinsfile)
+ *                — only when sidequest-build SUCCEEDED
+ * Script Path:   Jenkinsfile.deploy
+ *
+ * What it does:
+ *   1. Installs Ansible on the Jenkins agent via pip3.
+ *   2. Installs the community.docker Ansible collection (needed for
+ *      the docker_compose_v2 module used in deploy.yml).
+ *   3. Writes the EC2 SSH private key to a temp file.
+ *   4. Runs ansible/deploy.yml, injecting:
+ *        - ansible_host     (EC2 public IP from Jenkins parameter)
+ *        - build_version    (upstream build number = Docker image tag)
+ *        - docker_hub_password (from Jenkins docker-hub-credentials)
+ *        - db_password      (from Jenkins sidequest-db-password credential)
+ *
+ * Parameters (injected by master):
+ *   UPSTREAM_BUILD_NUMBER  – used as the Docker image tag to deploy
+ *   PIPELINE_NETWORK       – Docker bridge network (not used here, forwarded for consistency)
+ *   EC2_HOST               – public IP of the target EC2 instance
+ */
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 15, unit: 'MINUTES')
+    }
+
+    parameters {
+        string(
+            name: 'UPSTREAM_BUILD_NUMBER',
+            defaultValue: '',
+            description: 'BUILD_NUMBER of the upstream sidequest-master job (used as Docker image tag to deploy)'
+        )
+        string(
+            name: 'PIPELINE_NETWORK',
+            defaultValue: '',
+            description: 'Isolated Docker bridge network created by the master (forwarded for consistency)'
+        )
+        string(
+            name: 'EC2_HOST',
+            defaultValue: '',
+            description: 'Public IP address of the target EC2 instance'
+        )
+        // ── Webhook trigger context (forwarded by master, empty when manual) ──
+        string(name: 'GITHUB_ISSUE_NUMBER', defaultValue: '', description: '')
+        string(name: 'GITHUB_ISSUE_TITLE',  defaultValue: '', description: '')
+        string(name: 'GITHUB_PR_NUMBER',    defaultValue: '', description: '')
+        string(name: 'GITHUB_PR_TITLE',     defaultValue: '', description: '')
+        string(name: 'GITHUB_PR_SHA',       defaultValue: '', description: '')
+        string(name: 'GITHUB_PR_HEAD_REF',  defaultValue: '', description: '')
+        string(name: 'GITHUB_REPO',         defaultValue: '', description: '')
+        string(
+            name: 'TRIGGERED_BY',
+            defaultValue: 'manual',
+            description: 'Trigger source: "github-issue-webhook" | "github-pr-webhook" | "manual"'
+        )
+    }
+
+    environment {
+        DOCKER_HUB_USER  = "aditya0l0"
+        ANSIBLE_DIR      = "ansible"
+        // Suppress Ansible colour codes in Jenkins logs
+        ANSIBLE_FORCE_COLOR = "false"
+        // Silence deprecation warnings about interpreter discovery
+        ANSIBLE_PYTHON_INTERPRETER = "/usr/bin/python3"
+    }
+
+    stages {
+
+        // ─────────────────────────────────────────────────────────────────
+        // VALIDATE: make sure this job was triggered by the master.
+        // ─────────────────────────────────────────────────────────────────
+        stage('Validate & Checkout') {
+            steps {
+                script {
+                    if (!params.UPSTREAM_BUILD_NUMBER) {
+                        error("[DEPLOY] UPSTREAM_BUILD_NUMBER is required. This job must be triggered by sidequest-master.")
+                    }
+                    if (!params.EC2_HOST) {
+                        error("[DEPLOY] EC2_HOST parameter is empty. Set it in sidequest-master parameters.")
+                    }
+
+                    echo "=== [DEPLOY] Deploying build #${params.UPSTREAM_BUILD_NUMBER} to EC2 host: ${params.EC2_HOST} ==="
+
+                    // Checkout PR head commit if this was a PR-triggered run
+                    if (params.TRIGGERED_BY == 'github-pr-webhook' || params.TRIGGERED_BY == 'github-comment-webhook') {
+                        if (params.GITHUB_PR_SHA) {
+                            sh "git fetch origin ${params.GITHUB_PR_SHA} && git checkout -f ${params.GITHUB_PR_SHA}"
+                        } else if (params.GITHUB_PR_NUMBER) {
+                            sh "git fetch origin pull/${params.GITHUB_PR_NUMBER}/head && git checkout -f FETCH_HEAD"
+                        }
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // INSTALL ANSIBLE: pip3 install on the Jenkins agent.
+        // Uses --user to avoid needing root; installs community.docker
+        // collection for the docker_compose_v2 module.
+        // ─────────────────────────────────────────────────────────────────
+        stage('Install Ansible') {
+            steps {
+                echo "=== [DEPLOY] Installing Ansible on Jenkins agent ==="
+                sh '''
+                    pip3 install --user --quiet ansible
+                    # Ensure ~/.local/bin is on PATH
+                    export PATH="$HOME/.local/bin:$PATH"
+                    ansible --version
+
+                    echo "=== [DEPLOY] Installing community.docker Ansible collection ==="
+                    ansible-galaxy collection install community.docker --upgrade
+                '''
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // DEPLOY: run ansible/deploy.yml with credentials injected.
+        // ─────────────────────────────────────────────────────────────────
+        stage('Run Ansible Deploy') {
+            steps {
+                script {
+                    // ── Bind all required Jenkins credentials ─────────────
+                    withCredentials([
+                        sshUserPrivateKey(
+                            credentialsId: 'ec2-ssh-key',          // Jenkins credential ID
+                            keyFileVariable: 'EC2_KEY_FILE',
+                            usernameVariable: 'EC2_USER'
+                        ),
+                        usernamePassword(
+                            credentialsId: 'docker-hub-credentials', // already exists
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_PASS'
+                        ),
+                        string(
+                            credentialsId: 'sidequest-db-password', // Jenkins secret text
+                            variable: 'DB_PASS'
+                        )
+                    ]) {
+                        def deployStatus = sh(
+                            label: '[deploy] ansible-playbook deploy.yml',
+                            returnStatus: true,
+                            script: """
+                                export PATH="\$HOME/.local/bin:\$PATH"
+
+                                ansible-playbook \\
+                                    -i ${ANSIBLE_DIR}/inventory.ini \\
+                                    ${ANSIBLE_DIR}/deploy.yml \\
+                                    --private-key "\${EC2_KEY_FILE}" \\
+                                    -e ansible_host="${params.EC2_HOST}" \\
+                                    -e build_version="${params.UPSTREAM_BUILD_NUMBER}" \\
+                                    -e docker_hub_user="${DOCKER_HUB_USER}" \\
+                                    -e docker_hub_password="\${DOCKER_PASS}" \\
+                                    -e db_password="\${DB_PASS}" \\
+                                    -v
+                            """
+                        )
+
+                        if (deployStatus != 0) {
+                            error("[DEPLOY] ansible-playbook FAILED with exit code ${deployStatus}.")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "=== [DEPLOY] ✅ Deployment SUCCEEDED — Build #${params.UPSTREAM_BUILD_NUMBER} is live on http://${params.EC2_HOST} ==="
+        }
+        failure {
+            echo "=== [DEPLOY] ❌ Deployment FAILED — check Ansible output above for details ==="
+        }
+    }
+}

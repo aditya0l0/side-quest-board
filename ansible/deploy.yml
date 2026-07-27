@@ -1,0 +1,154 @@
+---
+# deploy.yml
+#
+# Called by Jenkins (Jenkinsfile.deploy) after every successful build.
+# Pulls the newly-pushed Docker Hub images and restarts the application stack.
+#
+# Required extra vars (all injected by Jenkins -e flags):
+#   build_version       — upstream build number used as the Docker image tag
+#   ansible_host        — EC2 public IP passed as Jenkins parameter EC2_HOST
+#   docker_hub_password — Docker Hub password from Jenkins credential
+#   db_password         — MySQL root password from Jenkins credential
+#
+# Usage (manual):
+#   ansible-playbook -i ansible/inventory.ini ansible/deploy.yml \
+#     -e "ansible_host=<EC2_HOST>" \
+#     -e "build_version=<BUILD_NUMBER>" \
+#     -e "docker_hub_password=<DOCKER_HUB_PASS>" \
+#     -e "db_password=<DB_PASS>" \
+#     --private-key /path/to/ec2-key.pem
+#
+# Idempotent: safe to re-run for the same build_version.
+
+- name: Deploy Side-Quest Board (build {{ build_version }})
+  hosts: webservers
+  become: true
+
+  tasks:
+
+    # ── Verify Prerequisites ──────────────────────────────────────────────────
+    - name: Verify Docker is available on the target host
+      command: docker --version
+      register: docker_check
+      changed_when: false
+      failed_when: docker_check.rc != 0
+
+    - name: Verify Docker Compose plugin is available
+      command: docker compose version
+      register: compose_check
+      changed_when: false
+      failed_when: compose_check.rc != 0
+
+    # ── Docker Hub Login ──────────────────────────────────────────────────────
+    - name: Log in to Docker Hub
+      command: >
+        docker login -u {{ docker_hub_user }} -p {{ docker_hub_password }}
+      no_log: true   # never print credentials in CI logs
+      changed_when: false
+
+    # ── Pull Images ───────────────────────────────────────────────────────────
+    - name: Pull backend Docker image — {{ backend_image }}
+      command: docker pull {{ backend_image }}
+      register: backend_pull
+      changed_when: "'Status: Downloaded newer image' in backend_pull.stdout"
+
+    - name: Pull frontend Docker image — {{ frontend_image }}
+      command: docker pull {{ frontend_image }}
+      register: frontend_pull
+      changed_when: "'Status: Downloaded newer image' in frontend_pull.stdout"
+
+    # ── Deploy Docker Compose Stack ───────────────────────────────────────────
+    - name: Render docker-compose.yml from template
+      template:
+        src: templates/docker-compose.deploy.yml.j2
+        dest: "{{ app_dir }}/docker-compose.yml"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Bring up the application stack (recreate changed containers only)
+      community.docker.docker_compose_v2:
+        project_src:   "{{ app_dir }}"
+        state:         present
+        pull:          never     # images already pulled above
+        recreate:      always    # always recreate to pick up new image tags
+        remove_orphans: true
+      become_user: ubuntu
+
+    # ── Nginx Reverse Proxy ───────────────────────────────────────────────────
+    - name: Render Nginx site config from template
+      template:
+        src:   templates/nginx-proxy.conf.j2
+        dest:  "/etc/nginx/sites-available/{{ nginx_site_name }}"
+        owner: root
+        group: root
+        mode:  '0644'
+      notify: reload nginx
+
+    - name: Enable Nginx site (create symlink in sites-enabled)
+      file:
+        src:   "/etc/nginx/sites-available/{{ nginx_site_name }}"
+        dest:  "/etc/nginx/sites-enabled/{{ nginx_site_name }}"
+        state: link
+      notify: reload nginx
+
+    - name: Disable the default Nginx site
+      file:
+        path:  /etc/nginx/sites-enabled/default
+        state: absent
+      notify: reload nginx
+
+    - name: Validate Nginx configuration
+      command: nginx -t
+      changed_when: false
+      register: nginx_test
+      failed_when: nginx_test.rc != 0
+
+    # ── Health Checks ─────────────────────────────────────────────────────────
+    - name: Wait for backend Spring Boot API to become healthy
+      uri:
+        url:            "http://127.0.0.1:{{ backend_port }}/api/quests/xp-total"
+        method:         GET
+        status_code:    200
+        return_content: no
+      register:   api_health
+      retries:    12
+      delay:      10
+      until:      api_health.status == 200
+
+    - name: Wait for frontend to become reachable through Nginx
+      uri:
+        url:            "http://127.0.0.1/health"
+        method:         GET
+        status_code:    200
+        return_content: no
+      register:   frontend_health
+      retries:    6
+      delay:      5
+      until:      frontend_health.status == 200
+
+    # ── Cleanup ───────────────────────────────────────────────────────────────
+    - name: Remove dangling Docker images to free disk space
+      command: docker image prune -f
+      changed_when: false
+
+    - name: Log out from Docker Hub
+      command: docker logout
+      changed_when: false
+
+    # ── Summary ───────────────────────────────────────────────────────────────
+    - name: Deployment complete
+      debug:
+        msg:
+          - "✅ Side-Quest Board deployed successfully!"
+          - "   Build version : {{ build_version }}"
+          - "   Backend image : {{ backend_image }}"
+          - "   Frontend image: {{ frontend_image }}"
+          - "   App URL       : http://{{ ansible_host }}"
+
+  # ── Handlers ─────────────────────────────────────────────────────────────────
+  handlers:
+    - name: reload nginx
+      service:
+        name:  nginx
+        state: reloaded

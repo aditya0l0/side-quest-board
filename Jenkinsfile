@@ -45,7 +45,13 @@ pipeline {
         string(
             name: 'PIPELINE_STAGES',
             defaultValue: 'all',
-            description: 'Stages to run: all | lint | test | build | lint,test | test,build | lint,build'
+            description: 'Stages to run: all | lint | test | build | deploy | lint,test | test,build | lint,build | build,deploy'
+        )
+        // ── Deployment target ─────────────────────────────────────────────────
+        string(
+            name: 'EC2_HOST',
+            defaultValue: '13.48.57.103',
+            description: 'Public IP of the EC2 instance to deploy to (overridable per-run)'
         )
         // ── Webhook trigger context (empty when triggered manually) ──────────
         string(
@@ -121,10 +127,11 @@ pipeline {
                     env.RUN_LINT      = (s == 'all' || s.contains('lint')).toString()
                     env.RUN_TEST      = (s == 'all' || s.contains('test')).toString()
                     env.RUN_BUILD     = (s == 'all' || s.contains('build')).toString()
+                    env.RUN_DEPLOY    = (s == 'all' || s.contains('deploy')).toString()
                     env.FULL_PIPELINE = (s == 'all').toString()
 
                     echo "=== [MASTER] Pipeline stages : ${s} ==="
-                    echo "=== [MASTER]   RUN_LINT=${env.RUN_LINT}  RUN_TEST=${env.RUN_TEST}  RUN_BUILD=${env.RUN_BUILD}  FULL_PIPELINE=${env.FULL_PIPELINE} ==="
+                    echo "=== [MASTER]   RUN_LINT=${env.RUN_LINT}  RUN_TEST=${env.RUN_TEST}  RUN_BUILD=${env.RUN_BUILD}  RUN_DEPLOY=${env.RUN_DEPLOY}  FULL_PIPELINE=${env.FULL_PIPELINE} ==="
                 }
                 echo "=== [MASTER] Creating isolated Docker network: ${env.PIPELINE_NETWORK} ==="
                 sh "docker network create ${env.PIPELINE_NETWORK} || true"
@@ -273,6 +280,51 @@ pipeline {
                 }
             }
         }
+
+        // ─────────────────────────────────────────────────────────────────
+        // TRIGGER DEPLOY
+        // Runs only when: deploy is requested AND build succeeded.
+        // ─────────────────────────────────────────────────────────────────
+        stage('Trigger Deploy') {
+            when {
+                expression {
+                    env.RUN_DEPLOY == 'true' &&
+                    !(env.FULL_PIPELINE == 'true' && env.BUILD_RESULT != 'SUCCESS')
+                }
+            }
+            steps {
+                script {
+                    echo "=== [MASTER] Triggering downstream job: sidequest-deploy ==="
+
+                    def deployJob = build(
+                        job: 'sidequest-deploy',
+                        parameters: [
+                            string(name: 'UPSTREAM_BUILD_NUMBER', value: "${BUILD_NUMBER}"),
+                            string(name: 'PIPELINE_NETWORK',       value: "${env.PIPELINE_NETWORK}"),
+                            string(name: 'EC2_HOST',               value: "${params.EC2_HOST}"),
+                            string(name: 'GITHUB_ISSUE_NUMBER',    value: "${params.GITHUB_ISSUE_NUMBER}"),
+                            string(name: 'GITHUB_ISSUE_TITLE',     value: "${params.GITHUB_ISSUE_TITLE}"),
+                            string(name: 'GITHUB_PR_NUMBER',       value: "${params.GITHUB_PR_NUMBER}"),
+                            string(name: 'GITHUB_PR_TITLE',        value: "${params.GITHUB_PR_TITLE}"),
+                            string(name: 'GITHUB_PR_SHA',          value: "${params.GITHUB_PR_SHA}"),
+                            string(name: 'GITHUB_PR_HEAD_REF',     value: "${params.GITHUB_PR_HEAD_REF}"),
+                            string(name: 'GITHUB_REPO',            value: "${params.GITHUB_REPO}"),
+                            string(name: 'TRIGGERED_BY',           value: "${params.TRIGGERED_BY}")
+                        ],
+                        propagate: false,
+                        wait: true
+                    )
+
+                    env.DEPLOY_RESULT = deployJob.result
+                    echo "=== [MASTER] sidequest-deploy finished with result: ${env.DEPLOY_RESULT} ==="
+
+                    if (env.DEPLOY_RESULT != 'SUCCESS') {
+                        currentBuild.result = 'FAILURE'
+                        error("[MASTER] Deploy FAILED — check sidequest-deploy logs.")
+                    }
+                }
+            }
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -284,15 +336,17 @@ pipeline {
             sh "docker network rm ${env.PIPELINE_NETWORK} || true"
 
             script {
-                def lintSummary  = env.LINT_RESULT  ?: 'SKIPPED'
-                def testSummary  = env.TEST_RESULT  ?: 'SKIPPED'
-                def buildSummary = env.BUILD_RESULT ?: 'SKIPPED'
+                def lintSummary   = env.LINT_RESULT   ?: 'SKIPPED'
+                def testSummary   = env.TEST_RESULT   ?: 'SKIPPED'
+                def buildSummary  = env.BUILD_RESULT  ?: 'SKIPPED'
+                def deploySummary = env.DEPLOY_RESULT ?: 'SKIPPED'
 
                 echo """
 === [MASTER] ─── Pipeline Summary ───────────────────────────
     sidequest-lint   : ${lintSummary}
     sidequest-test   : ${testSummary}
     sidequest-build  : ${buildSummary}
+    sidequest-deploy : ${deploySummary}
 ─────────────────────────────────────────────────────────────
 """
 
@@ -311,9 +365,10 @@ pipeline {
                     }
 
                     // Compute overall status based on requested stages
-                    def requestedFailed = (env.RUN_LINT == 'true' && env.LINT_RESULT == 'FAILURE') ||
-                                          (env.RUN_TEST == 'true' && env.TEST_RESULT == 'FAILURE') ||
-                                          (env.RUN_BUILD == 'true' && env.BUILD_RESULT == 'FAILURE')
+                    def requestedFailed = (env.RUN_LINT == 'true'   && env.LINT_RESULT   == 'FAILURE') ||
+                                          (env.RUN_TEST == 'true'   && env.TEST_RESULT   == 'FAILURE') ||
+                                          (env.RUN_BUILD == 'true'  && env.BUILD_RESULT  == 'FAILURE') ||
+                                          (env.RUN_DEPLOY == 'true' && env.DEPLOY_RESULT == 'FAILURE')
 
                     def requestedUnstable = (env.RUN_TEST == 'true' && env.TEST_RESULT == 'UNSTABLE')
 
@@ -329,16 +384,17 @@ pipeline {
                             "**Triggered by:** Pull Request #${params.GITHUB_PR_NUMBER} \u2014 \"${params.GITHUB_PR_TITLE}\"\n**Commit:** `${params.GITHUB_PR_SHA ?: 'head'}`" :
                             "**Triggered by:** Issue #${params.GITHUB_ISSUE_NUMBER} \u2014 \"${params.GITHUB_ISSUE_TITLE}\"")
 
-                    def commentBody = """## ${overallEmoji} Jenkins CI Report \u2014 Build #${BUILD_NUMBER}
+                    def commentBody = """## ${overallEmoji} Jenkins CI Report — Build #${BUILD_NUMBER}
 
 ${triggerDetails}
 **Stages requested:** `${params.PIPELINE_STAGES ?: 'all'}`
 
 | Stage | Result |
 |-------|--------|
-| \ud83d\udd0d Lint  | ${statusEmoji(lintSummary)} ${lintSummary} |
-| \ud83e\uddea Test  | ${statusEmoji(testSummary)} ${testSummary} |
-| \ud83c\udfd7\ufe0f Build | ${statusEmoji(buildSummary)} ${buildSummary} |
+| \ud83d\udd0d Lint   | ${statusEmoji(lintSummary)} ${lintSummary} |
+| \ud83e\uddea Test   | ${statusEmoji(testSummary)} ${testSummary} |
+| \ud83c\udfd7\ufe0f Build  | ${statusEmoji(buildSummary)} ${buildSummary} |
+| \ud83d\ude80 Deploy | ${statusEmoji(deploySummary)} ${deploySummary} |
 
 **Overall: ${overallEmoji} ${overallStatus}**
 
