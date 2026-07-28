@@ -125,6 +125,10 @@ pipeline {
                             variable: 'DB_PASS'
                         )
                     ]) {
+                        // Capture output to a log file so we can grep for silent failures
+                        // (Ansible exits 0 even when all plays are skipped due to inventory issues).
+                        def ansibleLog = "${WORKSPACE}/ansible-deploy-${params.UPSTREAM_BUILD_NUMBER}.log"
+
                         def deployStatus = sh(
                             label: '[deploy-worker] Run Ansible playbook via Docker container',
                             returnStatus: true,
@@ -158,9 +162,19 @@ pipeline {
                                             -e docker_hub_password=\\\"\$DOCKER_PASS\\\" \\
                                             -e db_password=\\\"\$DB_PASS\\\" \\
                                             -v
-                                    "
+                                    " 2>&1 | tee ${ansibleLog}
                             """
                         )
+
+                        // Guard: Ansible exits 0 even when all plays are skipped.
+                        // Detect the "no hosts matched" condition explicitly and fail fast.
+                        def skipped = sh(
+                            returnStatus: true,
+                            script: "grep -q 'skipping: no hosts matched' ${ansibleLog}"
+                        )
+                        if (skipped == 0) {
+                            error("[DEPLOY] Ansible reported 'skipping: no hosts matched' — inventory parse failed or EC2_HOST was not applied. No deployment was performed.")
+                        }
 
                         if (deployStatus != 0) {
                             error("[DEPLOY] Ansible deploy worker container FAILED with exit code ${deployStatus}.")
