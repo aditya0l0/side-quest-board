@@ -125,7 +125,7 @@
       community.docker.docker_compose_v2:
         project_src:   "{{ app_dir }}"
         state:         present
-        pull:          never     # images already pulled above
+        pull:          missing   # pull only images not already cached locally (e.g. mysql:8.0)
         recreate:      always    # always recreate to pick up new image tags
         remove_orphans: true
       # Run as root (become: true inherited from play) so it has access to
