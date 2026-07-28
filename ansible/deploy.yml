@@ -105,6 +105,14 @@
       changed_when: "'Status: Downloaded newer image' in frontend_pull.stdout"
 
     # ── Deploy Docker Compose Stack ───────────────────────────────────────────
+    - name: Ensure app directory exists
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
     - name: Render docker-compose.yml from template
       template:
         src: templates/docker-compose.deploy.yml.j2
