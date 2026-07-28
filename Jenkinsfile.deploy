@@ -132,7 +132,11 @@ pipeline {
                         def deployStatus = sh(
                             label: '[deploy-worker] Run Ansible playbook via Docker container',
                             returnStatus: true,
+                            // set -o pipefail must be in the OUTER shell so that
+                            // `docker run ... | tee` correctly propagates a non-zero
+                            // exit from the container through the pipe.
                             script: """
+                                set -o pipefail
                                 docker run --rm \\
                                     --name deploy-worker-${params.UPSTREAM_BUILD_NUMBER} \\
                                     --network ${params.PIPELINE_NETWORK} \\
@@ -144,7 +148,6 @@ pipeline {
                                     -w ${WORKSPACE} \\
                                     python:3.11-alpine \\
                                     sh -c "
-                                        set -o pipefail
                                         echo '=== Installing Ansible & OpenSSH inside deploy worker container ==='
                                         apk add --no-cache openssh-client bash > /dev/null
                                         pip install --quiet --no-cache-dir ansible
@@ -179,15 +182,23 @@ pipeline {
                         }
 
                         // Guard 2: Catch UNREACHABLE hosts (SSH failures, host-key issues, etc.).
-                        // Ansible exits with code 4 for UNREACHABLE, but that is now correctly
-                        // propagated via set -o pipefail. This grep provides a belt-and-suspenders
-                        // human-readable failure message in the log.
                         def unreachable = sh(
                             returnStatus: true,
                             script: "grep -q 'UNREACHABLE' ${ansibleLog}"
                         )
                         if (unreachable == 0) {
                             error("[DEPLOY] Ansible reported one or more UNREACHABLE hosts — SSH or network connectivity failed. Check EC2_HOST (${params.EC2_HOST}), SSH key, and security-group rules.")
+                        }
+
+                        // Guard 3: Catch any task-level FAILED! lines in the Ansible output.
+                        // This is the belt-and-suspenders check for cases like "docker not found"
+                        // where the playbook task fails but the exit-code path was previously lost.
+                        def taskFailed = sh(
+                            returnStatus: true,
+                            script: "grep -q 'FAILED!' ${ansibleLog}"
+                        )
+                        if (taskFailed == 0) {
+                            error("[DEPLOY] Ansible reported one or more FAILED tasks — see log above for details.")
                         }
 
                         if (deployStatus != 0) {
