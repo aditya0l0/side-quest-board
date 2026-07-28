@@ -128,7 +128,23 @@
         pull:          never     # images already pulled above
         recreate:      always    # always recreate to pick up new image tags
         remove_orphans: true
-      become_user: ubuntu
+      # Run as root (become: true inherited from play) so it has access to
+      # /var/run/docker.sock. The ubuntu docker-group change from earlier in
+      # this play does NOT take effect in the current SSH session, so running
+      # as ubuntu would get 'permission denied on /var/run/docker.sock'.
+
+    # ── Install & Configure Nginx ──────────────────────────────────────────────
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: present
+        update_cache: false   # cache already refreshed during Docker install
+
+    - name: Ensure Nginx service is started and enabled
+      service:
+        name: nginx
+        state: started
+        enabled: true
 
     # ── Nginx Reverse Proxy ───────────────────────────────────────────────────
     - name: Render Nginx site config from template
@@ -164,12 +180,12 @@
       uri:
         url:            "http://127.0.0.1:{{ backend_port }}/api/quests/xp-total"
         method:         GET
-        status_code:    200
+        status_code:    [200, 404]   # 404 means app is up but no data yet — still healthy
         return_content: no
       register:   api_health
-      retries:    12
+      retries:    18              # 18 × 10 s = 3 min — Spring Boot + MySQL cold start
       delay:      10
-      until:      api_health.status == 200
+      until:      api_health.status in [200, 404]
 
     - name: Wait for frontend to become reachable through Nginx
       uri:

@@ -7,8 +7,6 @@
 # The build_version variable is injected by Ansible at deploy time:
 #   -e build_version=<UPSTREAM_BUILD_NUMBER>
 
-version: '3.8'
-
 services:
 
   db:
@@ -22,6 +20,8 @@ services:
       - "{{ db_host_port }}:{{ db_port }}"
     volumes:
       - db_data:/var/lib/mysql
+    networks:
+      - sidequest-net
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p{{ db_password }}"]
       interval: 10s
@@ -39,6 +39,8 @@ services:
       SPRING_DATASOURCE_PASSWORD: "{{ db_password }}"
     ports:
       - "{{ backend_port }}:8080"
+    networks:
+      - sidequest-net
     depends_on:
       db:
         condition: service_healthy
@@ -49,8 +51,14 @@ services:
     restart: unless-stopped
     ports:
       - "{{ frontend_port }}:80"
+    networks:
+      - sidequest-net
     depends_on:
       - backend
 
 volumes:
   db_data:
+
+networks:
+  sidequest-net:
+    driver: bridge

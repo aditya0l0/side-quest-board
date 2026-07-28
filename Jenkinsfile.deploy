@@ -28,7 +28,7 @@ pipeline {
     options {
         timestamps()
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 15, unit: 'MINUTES')
+        timeout(time: 30, unit: 'MINUTES')  // 30 min: Docker install + pulls + MySQL + Spring Boot cold start
     }
 
     parameters {
@@ -211,6 +211,16 @@ pipeline {
     }
 
     post {
+        always {
+            // Archive the Ansible log so it is preserved for post-mortem debugging
+            // even after the workspace is cleaned up.
+            script {
+                def logFile = "ansible-deploy-${params.UPSTREAM_BUILD_NUMBER}.log"
+                if (fileExists(logFile)) {
+                    archiveArtifacts artifacts: logFile, allowEmptyArchive: true
+                }
+            }
+        }
         success {
             echo "=== [DEPLOY] ✅ Deployment SUCCEEDED — Build #${params.UPSTREAM_BUILD_NUMBER} is live on http://${params.EC2_HOST} ==="
         }
