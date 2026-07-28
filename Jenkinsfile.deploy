@@ -140,9 +140,11 @@ pipeline {
                                     -e EC2_KEY_FILE="\${EC2_KEY_FILE}" \\
                                     -e DOCKER_PASS="\${DOCKER_PASS}" \\
                                     -e DB_PASS="\${DB_PASS}" \\
+                                    -e ANSIBLE_HOST_KEY_CHECKING=False \\
                                     -w ${WORKSPACE} \\
                                     python:3.11-alpine \\
                                     sh -c "
+                                        set -o pipefail
                                         echo '=== Installing Ansible & OpenSSH inside deploy worker container ==='
                                         apk add --no-cache openssh-client bash > /dev/null
                                         pip install --quiet --no-cache-dir ansible
@@ -166,7 +168,7 @@ pipeline {
                             """
                         )
 
-                        // Guard: Ansible exits 0 even when all plays are skipped.
+                        // Guard 1: Ansible exits 0 even when all plays are skipped.
                         // Detect the "no hosts matched" condition explicitly and fail fast.
                         def skipped = sh(
                             returnStatus: true,
@@ -174,6 +176,18 @@ pipeline {
                         )
                         if (skipped == 0) {
                             error("[DEPLOY] Ansible reported 'skipping: no hosts matched' — inventory parse failed or EC2_HOST was not applied. No deployment was performed.")
+                        }
+
+                        // Guard 2: Catch UNREACHABLE hosts (SSH failures, host-key issues, etc.).
+                        // Ansible exits with code 4 for UNREACHABLE, but that is now correctly
+                        // propagated via set -o pipefail. This grep provides a belt-and-suspenders
+                        // human-readable failure message in the log.
+                        def unreachable = sh(
+                            returnStatus: true,
+                            script: "grep -q 'UNREACHABLE' ${ansibleLog}"
+                        )
+                        if (unreachable == 0) {
+                            error("[DEPLOY] Ansible reported one or more UNREACHABLE hosts — SSH or network connectivity failed. Check EC2_HOST (${params.EC2_HOST}), SSH key, and security-group rules.")
                         }
 
                         if (deployStatus != 0) {
