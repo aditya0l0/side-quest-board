@@ -37,16 +37,19 @@
         state: present
         update_cache: true
 
-    - name: Add Docker GPG key
-      apt_key:
+    - name: Download Docker GPG key (modern keyring approach — no apt-key)
+      get_url:
         url: https://download.docker.com/linux/ubuntu/gpg
-        state: present
+        dest: /usr/share/keyrings/docker.asc
+        mode: '0644'
+        force: false   # idempotent — skip if already present
 
-    - name: Add Docker apt repository
+    - name: Add Docker apt repository (signed-by keyring)
       apt_repository:
-        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
         state: present
         filename: docker
+        update_cache: true
 
     - name: Install Docker Engine and Compose plugin
       apt:
