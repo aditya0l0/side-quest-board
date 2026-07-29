@@ -26,6 +26,25 @@
 
   tasks:
 
+    # ── Pre-flight: Free Disk Space ───────────────────────────────────────────
+    # Run cleanup BEFORE pulling new images so we don't hit "no space left on
+    # device" mid-deploy. Docker daemon may not be installed on first run, so
+    # we ignore errors gracefully.
+    - name: Remove stopped containers (pre-flight)
+      command: docker container prune -f
+      changed_when: false
+      failed_when: false   # Docker may not be installed yet on first run
+
+    - name: Remove dangling Docker images (pre-flight)
+      command: docker image prune -f
+      changed_when: false
+      failed_when: false
+
+    - name: Remove unused Docker volumes (pre-flight)
+      command: docker volume prune -f
+      changed_when: false
+      failed_when: false
+
     # ── Install Prerequisites (idempotent) ────────────────────────────────────
     - name: Install apt dependencies for Docker repository
       apt:
