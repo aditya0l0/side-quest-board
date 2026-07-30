@@ -28,7 +28,7 @@ pipeline {
     options {
         timestamps()
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 30, unit: 'MINUTES')  // 30 min: Docker install + pulls + MySQL + Spring Boot cold start
+        timeout(time: 20, unit: 'MINUTES')  // 20 min: Docker install + pulls + MySQL + Spring Boot cold start
     }
 
     parameters {
@@ -102,8 +102,9 @@ pipeline {
 
         // ─────────────────────────────────────────────────────────────────
         // DEPLOY: run ansible/deploy.yml inside a Docker worker container.
-        // Uses python:3.11-alpine (DooD pattern) to avoid requiring Ansible
-        // or python on the Jenkins agent host.
+        // Uses cytopia/ansible:latest-tools (DooD pattern) — Ansible,
+        // OpenSSH, and the community.docker collection are pre-baked into
+        // the image, saving ~3-4 min of pip/apk install time per run.
         // ─────────────────────────────────────────────────────────────────
         stage('Run Ansible Deploy') {
             steps {
@@ -146,13 +147,8 @@ pipeline {
                                     -e DB_PASS="\${DB_PASS}" \\
                                     -e ANSIBLE_HOST_KEY_CHECKING=False \\
                                     -w ${WORKSPACE} \\
-                                    python:3.11-alpine \\
+                                    cytopia/ansible:latest-tools \\
                                     sh -c "
-                                        echo '=== Installing Ansible & OpenSSH inside deploy worker container ==='
-                                        apk add --no-cache openssh-client bash > /dev/null
-                                        pip install --quiet --no-cache-dir ansible
-                                        ansible-galaxy collection install community.docker > /dev/null
-
                                         echo '=== Setting SSH key permissions ==='
                                         chmod 400 \\"\$EC2_KEY_FILE\\"
 

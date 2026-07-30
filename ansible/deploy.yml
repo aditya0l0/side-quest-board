@@ -145,7 +145,7 @@
         project_src:   "{{ app_dir }}"
         state:         present
         pull:          missing   # pull only images not already cached locally (e.g. mysql:8.0)
-        recreate:      always    # always recreate to pick up new image tags
+        recreate:      auto      # only recreate containers whose config/image has changed
         remove_orphans: true
       # Run as root (become: true inherited from play) so it has access to
       # /var/run/docker.sock. The ubuntu docker-group change from earlier in
@@ -202,7 +202,7 @@
         status_code:    [200, 404]   # 404 means app is up but no data yet — still healthy
         return_content: no
       register:   api_health
-      retries:    18              # 18 × 10 s = 3 min — Spring Boot + MySQL cold start
+      retries:    12              # 12 × 10 s = 2 min — sufficient for Spring Boot + MySQL cold start
       delay:      10
       until:      api_health.status in [200, 404]
 
