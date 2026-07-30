@@ -69,6 +69,10 @@ pipeline {
         ANSIBLE_FORCE_COLOR = "false"
         // Silence deprecation warnings about interpreter discovery
         ANSIBLE_PYTHON_INTERPRETER = "/usr/bin/python3"
+        // Point Ansible to the cfg file inside the container; without this the
+        // container logs "No config file found; using defaults" because ansible.cfg
+        // lives in ansible/ while the container CWD is WORKSPACE root.
+        ANSIBLE_CONFIG = "ansible/ansible.cfg"
     }
 
     stages {
@@ -146,6 +150,7 @@ pipeline {
                                     -e DOCKER_PASS="\${DOCKER_PASS}" \\
                                     -e DB_PASS="\${DB_PASS}" \\
                                     -e ANSIBLE_HOST_KEY_CHECKING=False \\
+                                    -e ANSIBLE_CONFIG=${WORKSPACE}/${ANSIBLE_DIR}/ansible.cfg \\
                                     -w ${WORKSPACE} \\
                                     cytopia/ansible:latest-tools \\
                                     sh -c "
