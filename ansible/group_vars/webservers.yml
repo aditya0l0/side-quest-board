@@ -17,7 +17,7 @@ backend_image:   "{{ docker_hub_user }}/sidequest-backend:{{ build_version }}"
 frontend_image:  "{{ docker_hub_user }}/sidequest-frontend:{{ build_version }}"
 
 # ── Ports ────────────────────────────────────────────────────────────────────
-frontend_port:   80       # container port the frontend Nginx serves on
+frontend_port:   3000     # host-side port; host nginx reverse-proxies here
 backend_port:    8080     # Spring Boot API port
 db_port:         3306     # MySQL container internal port
 db_host_port:    3307     # MySQL host-side port mapping
