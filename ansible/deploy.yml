@@ -56,10 +56,27 @@
         state: present
         update_cache: true
 
-    - name: Download Docker GPG key (armored binary — required by deb822_repository)
+    # Remove stale Docker APT source files that cause "Conflicting values set
+    # for option Signed-By" errors when the Signed-By path changed between runs.
+    - name: Remove legacy Docker list-format source (if present)
+      file:
+        path: /etc/apt/sources.list.d/docker.list
+        state: absent
+
+    - name: Remove stale Docker deb822 source file with wrong keyring path (if present)
+      file:
+        path: /etc/apt/sources.list.d/docker.sources
+        state: absent
+
+    - name: Remove old docker.gpg keyring (normalise to .asc going forward)
+      file:
+        path: /usr/share/keyrings/docker.gpg
+        state: absent
+
+    - name: Download Docker GPG key (ASCII-armored — required by deb822_repository)
       get_url:
         url: https://download.docker.com/linux/ubuntu/gpg
-        dest: /usr/share/keyrings/docker.gpg
+        dest: /usr/share/keyrings/docker.asc
         mode: '0644'
         force: false   # idempotent — skip if already present
 
@@ -71,7 +88,7 @@
         suites: "{{ ansible_distribution_release }}"
         components: stable
         architectures: amd64
-        signed_by: /usr/share/keyrings/docker.gpg
+        signed_by: /usr/share/keyrings/docker.asc
         state: present
         enabled: true
 
