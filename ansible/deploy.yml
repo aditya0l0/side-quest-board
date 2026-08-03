@@ -46,16 +46,6 @@
       failed_when: false
 
     # ── Install Prerequisites (idempotent) ────────────────────────────────────
-    - name: Install apt dependencies for Docker repository
-      apt:
-        name:
-          - ca-certificates
-          - curl
-          - gnupg
-          - lsb-release
-        state: present
-        update_cache: true
-
     # Remove stale Docker APT source files that cause "Conflicting values set
     # for option Signed-By" errors when the Signed-By path changed between runs.
     - name: Remove legacy Docker list-format source (if present)
@@ -72,6 +62,16 @@
       file:
         path: /usr/share/keyrings/docker.gpg
         state: absent
+
+    - name: Install apt dependencies for Docker repository
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+        update_cache: true
 
     - name: Download Docker GPG key (ASCII-armored — required by deb822_repository)
       get_url:
