@@ -1,0 +1,232 @@
+
+/*
+ * DOWNSTREAM JOB: sidequest-deploy
+ *
+ * Triggered by:  sidequest-master  (Jenkinsfile)
+ *                — only when sidequest-build SUCCEEDED
+ * Script Path:   Jenkinsfile.deploy
+ *
+ * What it does:
+ *   1. Installs Ansible on the Jenkins agent via pip3.
+ *   2. Installs the community.docker Ansible collection (needed for
+ *      the docker_compose_v2 module used in deploy.yml).
+ *   3. Writes the EC2 SSH private key to a temp file.
+ *   4. Runs ansible/deploy.yml, injecting:
+ *        - ansible_host     (EC2 public IP from Jenkins parameter)
+ *        - build_version    (upstream build number = Docker image tag)
+ *        - docker_hub_password (from Jenkins docker-hub-credentials)
+ *        - db_password      (from Jenkins sidequest-db-password credential)
+ *
+ * Parameters (injected by master):
+ *   UPSTREAM_BUILD_NUMBER  – used as the Docker image tag to deploy
+ *   PIPELINE_NETWORK       – Docker bridge network (not used here, forwarded for consistency)
+ *   EC2_HOST               – public IP of the target EC2 instance
+ */
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 20, unit: 'MINUTES')  // 20 min: Docker install + pulls + MySQL + Spring Boot cold start
+    }
+
+    parameters {
+        string(
+            name: 'UPSTREAM_BUILD_NUMBER',
+            defaultValue: '',
+            description: 'BUILD_NUMBER of the upstream sidequest-master job (used as Docker image tag to deploy)'
+        )
+        string(
+            name: 'PIPELINE_NETWORK',
+            defaultValue: '',
+            description: 'Isolated Docker bridge network created by the master (forwarded for consistency)'
+        )
+        string(
+            name: 'EC2_HOST',
+            defaultValue: '16.171.34.41',
+            description: 'Public IP address of the target EC2 instance'
+        )
+        // ── Webhook trigger context (forwarded by master, empty when manual) ──
+        string(name: 'GITHUB_ISSUE_NUMBER', defaultValue: '', description: '')
+        string(name: 'GITHUB_ISSUE_TITLE',  defaultValue: '', description: '')
+        string(name: 'GITHUB_PR_NUMBER',    defaultValue: '', description: '')
+        string(name: 'GITHUB_PR_TITLE',     defaultValue: '', description: '')
+        string(name: 'GITHUB_PR_SHA',       defaultValue: '', description: '')
+        string(name: 'GITHUB_PR_HEAD_REF',  defaultValue: '', description: '')
+        string(name: 'GITHUB_REPO',         defaultValue: '', description: '')
+        string(
+            name: 'TRIGGERED_BY',
+            defaultValue: 'manual',
+            description: 'Trigger source: "github-issue-webhook" | "github-pr-webhook" | "manual"'
+        )
+    }
+
+    environment {
+        DOCKER_HUB_USER  = "aditya0l0"
+        ANSIBLE_DIR      = "ansible"
+        // Suppress Ansible colour codes in Jenkins logs
+        ANSIBLE_FORCE_COLOR = "false"
+        // Silence deprecation warnings about interpreter discovery
+        ANSIBLE_PYTHON_INTERPRETER = "/usr/bin/python3"
+        // Point Ansible to the cfg file inside the container; without this the
+        // container logs "No config file found; using defaults" because ansible.cfg
+        // lives in ansible/ while the container CWD is WORKSPACE root.
+        ANSIBLE_CONFIG = "ansible/ansible.cfg"
+    }
+
+    stages {
+
+        // ─────────────────────────────────────────────────────────────────
+        // VALIDATE: make sure this job was triggered by the master.
+        // ─────────────────────────────────────────────────────────────────
+        stage('Validate & Checkout') {
+            steps {
+                script {
+                    if (!params.UPSTREAM_BUILD_NUMBER) {
+                        error("[DEPLOY] UPSTREAM_BUILD_NUMBER is required. This job must be triggered by sidequest-master.")
+                    }
+                    if (!params.EC2_HOST) {
+                        error("[DEPLOY] EC2_HOST parameter is empty. Set it in sidequest-master parameters.")
+                    }
+
+                    echo "=== [DEPLOY] Deploying build #${params.UPSTREAM_BUILD_NUMBER} to EC2 host: ${params.EC2_HOST} ==="
+
+                    // Checkout PR head commit if this was a PR-triggered run
+                    if (params.TRIGGERED_BY == 'github-pr-webhook' || params.TRIGGERED_BY == 'github-comment-webhook') {
+                        if (params.GITHUB_PR_SHA) {
+                            sh "git fetch origin ${params.GITHUB_PR_SHA} && git checkout -f ${params.GITHUB_PR_SHA}"
+                        } else if (params.GITHUB_PR_NUMBER) {
+                            sh "git fetch origin pull/${params.GITHUB_PR_NUMBER}/head && git checkout -f FETCH_HEAD"
+                        }
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // DEPLOY: run ansible/deploy.yml inside a Docker worker container.
+        // Uses cytopia/ansible:latest-tools (DooD pattern) — Ansible,
+        // OpenSSH, and the community.docker collection are pre-baked into
+        // the image, saving ~3-4 min of pip/apk install time per run.
+        // ─────────────────────────────────────────────────────────────────
+        stage('Run Ansible Deploy') {
+            steps {
+                script {
+                    // ── Bind all required Jenkins credentials ─────────────
+                    withCredentials([
+                        sshUserPrivateKey(
+                            credentialsId: 'ec2-ssh-key',          // Jenkins credential ID
+                            keyFileVariable: 'EC2_KEY_FILE',
+                            usernameVariable: 'EC2_USER'
+                        ),
+                        usernamePassword(
+                            credentialsId: 'docker-hub-credentials', // already exists
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_PASS'
+                        ),
+                        string(
+                            credentialsId: 'sidequest-db-password', // Jenkins secret text
+                            variable: 'DB_PASS'
+                        )
+                    ]) {
+                        // Capture output to a log file so we can grep for silent failures
+                        // (Ansible exits 0 even when all plays are skipped due to inventory issues).
+                        def ansibleLog = "${WORKSPACE}/ansible-deploy-${params.UPSTREAM_BUILD_NUMBER}.log"
+
+                        def deployStatus = sh(
+                            label: '[deploy-worker] Run Ansible playbook via Docker container',
+                            returnStatus: true,
+                            // set -o pipefail must be in the OUTER shell so that
+                            // `docker run ... | tee` correctly propagates a non-zero
+                            // exit from the container through the pipe.
+                            script: """
+                                set -o pipefail
+                                docker run --rm \\
+                                    --name deploy-worker-${params.UPSTREAM_BUILD_NUMBER} \\
+                                    --network ${params.PIPELINE_NETWORK} \\
+                                    --volumes-from jenkins \\
+                                    -e EC2_KEY_FILE="\${EC2_KEY_FILE}" \\
+                                    -e DOCKER_PASS="\${DOCKER_PASS}" \\
+                                    -e DB_PASS="\${DB_PASS}" \\
+                                    -e ANSIBLE_HOST_KEY_CHECKING=False \\
+                                    -e ANSIBLE_CONFIG=${WORKSPACE}/${ANSIBLE_DIR}/ansible.cfg \\
+                                    -w ${WORKSPACE} \\
+                                    cytopia/ansible:latest-tools \\
+                                    sh -c "
+                                        echo '=== Setting SSH key permissions ==='
+                                        chmod 400 \\"\$EC2_KEY_FILE\\"
+
+                                        echo '=== Executing Ansible deploy playbook ==='
+                                        ansible-playbook \\
+                                            -i ${ANSIBLE_DIR}/inventory.ini \\
+                                            ${ANSIBLE_DIR}/deploy.yml \\
+                                            --private-key \\"\$EC2_KEY_FILE\\" \\
+                                            -e ansible_host='${params.EC2_HOST}' \\
+                                            -e build_version='${params.UPSTREAM_BUILD_NUMBER}' \\
+                                            -e docker_hub_user='${DOCKER_HUB_USER}' \\
+                                            -e docker_hub_password=\\\"\$DOCKER_PASS\\\" \\
+                                            -e db_password=\\\"\$DB_PASS\\\" \\
+                                            -v
+                                    " 2>&1 | tee ${ansibleLog}
+                            """
+                        )
+
+                        // Guard 1: Ansible exits 0 even when all plays are skipped.
+                        // Detect the "no hosts matched" condition explicitly and fail fast.
+                        def skipped = sh(
+                            returnStatus: true,
+                            script: "grep -q 'skipping: no hosts matched' ${ansibleLog}"
+                        )
+                        if (skipped == 0) {
+                            error("[DEPLOY] Ansible reported 'skipping: no hosts matched' — inventory parse failed or EC2_HOST was not applied. No deployment was performed.")
+                        }
+
+                        // Guard 2: Catch UNREACHABLE hosts (SSH failures, host-key issues, etc.).
+                        def unreachable = sh(
+                            returnStatus: true,
+                            script: "grep -q 'UNREACHABLE' ${ansibleLog}"
+                        )
+                        if (unreachable == 0) {
+                            error("[DEPLOY] Ansible reported one or more UNREACHABLE hosts — SSH or network connectivity failed. Check EC2_HOST (${params.EC2_HOST}), SSH key, and security-group rules.")
+                        }
+
+                        // Guard 3: Catch any task-level FAILED! lines in the Ansible output.
+                        // This is the belt-and-suspenders check for cases like "docker not found"
+                        // where the playbook task fails but the exit-code path was previously lost.
+                        def taskFailed = sh(
+                            returnStatus: true,
+                            script: "grep -q 'FAILED!' ${ansibleLog}"
+                        )
+                        if (taskFailed == 0) {
+                            error("[DEPLOY] Ansible reported one or more FAILED tasks — see log above for details.")
+                        }
+
+                        if (deployStatus != 0) {
+                            error("[DEPLOY] Ansible deploy worker container FAILED with exit code ${deployStatus}.")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Archive the Ansible log so it is preserved for post-mortem debugging
+            // even after the workspace is cleaned up.
+            script {
+                def logFile = "ansible-deploy-${params.UPSTREAM_BUILD_NUMBER}.log"
+                if (fileExists(logFile)) {
+                    archiveArtifacts artifacts: logFile, allowEmptyArchive: true
+                }
+            }
+        }
+        success {
+            echo "=== [DEPLOY] ✅ Deployment SUCCEEDED — Build #${params.UPSTREAM_BUILD_NUMBER} is live on http://${params.EC2_HOST} ==="
+        }
+        failure {
+            echo "=== [DEPLOY] ❌ Deployment FAILED — check Ansible output above for details ==="
+        }
+    }
+}

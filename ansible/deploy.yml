@@ -1,0 +1,293 @@
+---
+# deploy.yml
+#
+# Called by Jenkins (Jenkinsfile.deploy) after every successful build.
+# Pulls the newly-pushed Docker Hub images and restarts the application stack.
+#
+# Required extra vars (all injected by Jenkins -e flags):
+#   build_version       — upstream build number used as the Docker image tag
+#   ansible_host        — EC2 public IP passed as Jenkins parameter EC2_HOST
+#   docker_hub_password — Docker Hub password from Jenkins credential
+#   db_password         — MySQL root password from Jenkins credential
+#
+# Usage (manual):
+#   ansible-playbook -i ansible/inventory.ini ansible/deploy.yml \
+#     -e "ansible_host=<EC2_HOST>" \
+#     -e "build_version=<BUILD_NUMBER>" \
+#     -e "docker_hub_password=<DOCKER_HUB_PASS>" \
+#     -e "db_password=<DB_PASS>" \
+#     --private-key /path/to/ec2-key.pem
+#
+# Idempotent: safe to re-run for the same build_version.
+
+- name: Deploy Side-Quest Board (build {{ build_version }})
+  hosts: webservers
+  become: true
+
+  tasks:
+
+    # ── Pre-flight: Free Disk Space ───────────────────────────────────────────
+    # Run cleanup BEFORE pulling new images so we don't hit "no space left on
+    # device" mid-deploy. Docker daemon may not be installed on first run, so
+    # we ignore errors gracefully.
+    - name: Remove stopped containers (pre-flight)
+      command: docker container prune -f
+      changed_when: false
+      failed_when: false   # Docker may not be installed yet on first run
+
+    - name: Remove dangling Docker images (pre-flight)
+      command: docker image prune -f
+      changed_when: false
+      failed_when: false
+
+    - name: Remove unused Docker volumes (pre-flight)
+      command: docker volume prune -f
+      changed_when: false
+      failed_when: false
+
+    # ── Install Prerequisites (idempotent) ────────────────────────────────────
+    # Remove stale Docker APT source files that cause "Conflicting values set
+    # for option Signed-By" errors when the Signed-By path changed between runs.
+    - name: Remove legacy Docker list-format source (if present)
+      file:
+        path: /etc/apt/sources.list.d/docker.list
+        state: absent
+
+    - name: Remove stale Docker deb822 source file with wrong keyring path (if present)
+      file:
+        path: /etc/apt/sources.list.d/docker.sources
+        state: absent
+
+    - name: Remove old docker.gpg keyring (normalise to .asc going forward)
+      file:
+        path: /usr/share/keyrings/docker.gpg
+        state: absent
+
+    - name: Install apt dependencies for Docker repository
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+        update_cache: true
+
+    - name: Download Docker GPG key (ASCII-armored — required by deb822_repository)
+      get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /usr/share/keyrings/docker.asc
+        mode: '0644'
+        force: false   # idempotent — skip if already present
+
+    - name: Add Docker apt repository (deb822 format — replaces deprecated apt_repository)
+      deb822_repository:
+        name: docker
+        types: deb
+        uris: https://download.docker.com/linux/ubuntu
+        suites: "{{ ansible_distribution_release }}"
+        components: stable
+        architectures: amd64
+        signed_by: /usr/share/keyrings/docker.asc
+        state: present
+        enabled: true
+
+    - name: Install Docker Engine and Compose plugin
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+
+    - name: Ensure Docker service is started and enabled
+      service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Add ubuntu user to the docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: true
+
+    - name: Verify Docker is available on the target host
+      command: docker --version
+      register: docker_check
+      changed_when: false
+      failed_when: docker_check.rc != 0
+
+    - name: Verify Docker Compose plugin is available
+      command: docker compose version
+      register: compose_check
+      changed_when: false
+      failed_when: compose_check.rc != 0
+
+    # ── Docker Hub Login ──────────────────────────────────────────────────────
+    - name: Log in to Docker Hub
+      command: >
+        docker login -u {{ docker_hub_user }} -p {{ docker_hub_password }}
+      no_log: true   # never print credentials in CI logs
+      changed_when: false
+
+    # ── Pull Images ───────────────────────────────────────────────────────────
+    - name: Pull backend Docker image — {{ backend_image }}
+      command: docker pull {{ backend_image }}
+      register: backend_pull
+      changed_when: "'Status: Downloaded newer image' in backend_pull.stdout"
+
+    - name: Pull frontend Docker image — {{ frontend_image }}
+      command: docker pull {{ frontend_image }}
+      register: frontend_pull
+      changed_when: "'Status: Downloaded newer image' in frontend_pull.stdout"
+
+    # ── Deploy Docker Compose Stack ───────────────────────────────────────────
+    - name: Ensure app directory exists
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Render docker-compose.yml from template
+      template:
+        src: templates/docker-compose.deploy.yml.j2
+        dest: "{{ app_dir }}/docker-compose.yml"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Bring up the application stack (recreate changed containers only)
+      community.docker.docker_compose_v2:
+        project_src:   "{{ app_dir }}"
+        state:         present
+        pull:          missing   # pull only images not already cached locally (e.g. mysql:8.0)
+        recreate:      auto      # only recreate containers whose config/image has changed
+        remove_orphans: true
+      # Run as root (become: true inherited from play) so it has access to
+      # /var/run/docker.sock. The ubuntu docker-group change from earlier in
+      # this play does NOT take effect in the current SSH session, so running
+      # as ubuntu would get 'permission denied on /var/run/docker.sock'.
+
+    # ── Install & Configure Nginx ──────────────────────────────────────────────
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: present
+        update_cache: false   # cache already refreshed during Docker install
+
+    - name: Ensure Nginx service is started and enabled
+      service:
+        name: nginx
+        state: started
+        enabled: true
+
+    # ── Nginx Reverse Proxy ───────────────────────────────────────────────────
+    - name: Render Nginx site config from template
+      template:
+        src:   templates/nginx-proxy.conf.j2
+        dest:  "/etc/nginx/sites-available/{{ nginx_site_name }}"
+        owner: root
+        group: root
+        mode:  '0644'
+      notify: reload nginx
+
+    - name: Enable Nginx site (create symlink in sites-enabled)
+      file:
+        src:   "/etc/nginx/sites-available/{{ nginx_site_name }}"
+        dest:  "/etc/nginx/sites-enabled/{{ nginx_site_name }}"
+        state: link
+      notify: reload nginx
+
+    - name: Disable the default Nginx site
+      file:
+        path:  /etc/nginx/sites-enabled/default
+        state: absent
+      notify: reload nginx
+
+    - name: Validate Nginx configuration
+      command: nginx -t
+      changed_when: false
+      register: nginx_test
+      failed_when: nginx_test.rc != 0
+
+    # Reload Nginx unconditionally after every deploy.
+    # The 'reload nginx' handler only fires when a task notifies it (i.e. when
+    # the config *changes*). On subsequent deploys where the Nginx config is
+    # already up-to-date, the handler is never triggered — leaving Nginx with
+    # stale upstream state after containers are recreated. This explicit reload
+    # fixes the intermittent /health 404 failure.
+    - name: Reload Nginx to apply current config and refresh upstream connections
+      service:
+        name:  nginx
+        state: reloaded
+
+    # ── Health Checks ─────────────────────────────────────────────────────────
+    - name: Wait for backend Spring Boot API to become healthy
+      uri:
+        url:            "http://127.0.0.1:{{ backend_port }}/api/quests/xp-total"
+        method:         GET
+        status_code:    [200, 404]   # 404 means app is up but no data yet — still healthy
+        return_content: no
+      register:   api_health
+      retries:    12              # 12 × 10 s = 2 min — sufficient for Spring Boot + MySQL cold start
+      delay:      10
+      until:      api_health.status in [200, 404]
+
+    # Probe the frontend container directly on its host port first.
+    # This separates "is the container up?" from "is Nginx proxying correctly?"
+    # and gives faster, clearer failure messages.
+    - name: Wait for frontend container to become reachable (direct port check)
+      uri:
+        url:            "http://127.0.0.1:{{ frontend_port }}/"
+        method:         GET
+        status_code:    200
+        return_content: no
+      register:   frontend_direct
+      retries:    6
+      delay:      5
+      until:      frontend_direct.status == 200
+
+    # Confirm the Nginx /health stub responds correctly.
+    # This validates that Nginx is running and the site config is loaded.
+    - name: Confirm Nginx health endpoint is reachable (proxy layer check)
+      uri:
+        url:            "http://127.0.0.1/health"
+        method:         GET
+        status_code:    200
+        return_content: no
+      register:   nginx_health
+      retries:    3
+      delay:      3
+      until:      nginx_health.status == 200
+
+    # ── Cleanup ───────────────────────────────────────────────────────────────
+    - name: Remove dangling Docker images to free disk space
+      command: docker image prune -f
+      changed_when: false
+
+    - name: Log out from Docker Hub
+      command: docker logout
+      changed_when: false
+
+    # ── Summary ───────────────────────────────────────────────────────────────
+    - name: Deployment complete
+      debug:
+        msg:
+          - "✅ Side-Quest Board deployed successfully!"
+          - "   Build version : {{ build_version }}"
+          - "   Backend image : {{ backend_image }}"
+          - "   Frontend image: {{ frontend_image }}"
+          - "   App URL       : http://{{ ansible_host }}"
+
+  # ── Handlers ─────────────────────────────────────────────────────────────────
+  handlers:
+    - name: reload nginx
+      service:
+        name:  nginx
+        state: reloaded

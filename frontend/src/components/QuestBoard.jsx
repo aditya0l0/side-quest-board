@@ -71,7 +71,7 @@ export default function QuestBoard() {
     }
   };
 
-  const handleComplete = async (id, xpValue) => {
+  const handleComplete = async (id, _xpValue) => {
     try {
       setError(null);
       const updated = await completeQuest(id);

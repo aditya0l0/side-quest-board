@@ -1,0 +1,32 @@
+# group_vars/webservers.yml
+#
+# Variables shared between provision.yml and deploy.yml.
+# Sensitive values (db_password, docker_hub_password) are passed in via
+# Jenkins credentials at runtime using -e flags or Ansible Vault.
+
+# ── Application Identity ────────────────────────────────────────────────────
+app_name:        sidequest
+app_dir:         /opt/sidequest
+
+# ── Docker Hub ──────────────────────────────────────────────────────────────
+docker_hub_user: aditya0l0
+
+# These are templated at deploy time using the build_version extra var
+# injected by Jenkins: -e build_version=<UPSTREAM_BUILD_NUMBER>
+backend_image:   "{{ docker_hub_user }}/sidequest-backend:{{ build_version }}"
+frontend_image:  "{{ docker_hub_user }}/sidequest-frontend:{{ build_version }}"
+
+# ── Ports ────────────────────────────────────────────────────────────────────
+frontend_port:   3000     # host-side port; host nginx reverse-proxies here
+backend_port:    8080     # Spring Boot API port
+db_port:         3306     # MySQL container internal port
+db_host_port:    3307     # MySQL host-side port mapping
+
+# ── Nginx ────────────────────────────────────────────────────────────────────
+nginx_site_name: sidequest
+
+# ── Database ─────────────────────────────────────────────────────────────────
+# db_password is injected at runtime via Jenkins -e flag.
+# Never hardcode it here.
+db_name:    sidequest_board
+db_user:    root

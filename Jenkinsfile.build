@@ -1,0 +1,173 @@
+
+/*
+ * DOWNSTREAM JOB: sidequest-build
+ *
+ * Triggered by:  sidequest-master  (Jenkinsfile)
+ *                — only when lint PASSED and tests did not FAIL
+ * Script Path:   Jenkinsfile.build
+ *
+ * Builds the backend and frontend Docker images using Docker-outside-of-Docker
+ * (DooD) — mounts the host Docker socket so the worker container can invoke
+ * `docker build` directly on the host daemon.
+ *
+ * Image tags use the upstream build number for traceability:
+ *   sidequest-backend:<UPSTREAM_BUILD_NUMBER>
+ *   sidequest-frontend:<UPSTREAM_BUILD_NUMBER>
+ *
+ * Parameters (injected by master):
+ *   UPSTREAM_BUILD_NUMBER  – the master's BUILD_NUMBER (used as the image tag)
+ *   PIPELINE_NETWORK       – the Docker bridge network created by the master
+ */
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 20, unit: 'MINUTES')
+    }
+
+    parameters {
+        string(
+            name: 'UPSTREAM_BUILD_NUMBER',
+            defaultValue: '',
+            description: 'BUILD_NUMBER of the upstream sidequest-master job (used as Docker image tag)'
+        )
+        string(
+            name: 'PIPELINE_NETWORK',
+            defaultValue: '',
+            description: 'Isolated Docker bridge network created by the master'
+        )
+        // ── Webhook trigger context (forwarded by master, empty when manual) ──
+        string(
+            name: 'GITHUB_ISSUE_NUMBER',
+            defaultValue: '',
+            description: 'GitHub issue number that triggered this build'
+        )
+        string(
+            name: 'GITHUB_ISSUE_TITLE',
+            defaultValue: '',
+            description: 'GitHub issue title for log context'
+        )
+        string(
+            name: 'GITHUB_PR_NUMBER',
+            defaultValue: '',
+            description: 'GitHub pull request number that triggered this build'
+        )
+        string(
+            name: 'GITHUB_PR_TITLE',
+            defaultValue: '',
+            description: 'GitHub pull request title for log context'
+        )
+        string(
+            name: 'GITHUB_PR_SHA',
+            defaultValue: '',
+            description: 'GitHub pull request head commit SHA to check out'
+        )
+        string(
+            name: 'GITHUB_PR_HEAD_REF',
+            defaultValue: '',
+            description: 'GitHub pull request head branch ref'
+        )
+        string(
+            name: 'TRIGGERED_BY',
+            defaultValue: 'manual',
+            description: 'Trigger source: "github-issue-webhook" | "github-pr-webhook" | "manual"'
+        )
+    }
+
+    environment {
+        // The Docker Hub username to push the images to
+        DOCKER_HUB_USER = "aditya0l0"
+        BACKEND_IMAGE  = "${DOCKER_HUB_USER}/sidequest-backend:${params.UPSTREAM_BUILD_NUMBER}"
+        FRONTEND_IMAGE = "${DOCKER_HUB_USER}/sidequest-frontend:${params.UPSTREAM_BUILD_NUMBER}"
+    }
+
+    stages {
+        stage('Validate & Checkout') {
+            steps {
+                script {
+                    if (!params.UPSTREAM_BUILD_NUMBER || !params.PIPELINE_NETWORK) {
+                        error("[BUILD] Required parameters missing. This job must be triggered by sidequest-master, not run directly.")
+                    }
+                    if (params.TRIGGERED_BY == 'github-pr-webhook' || params.TRIGGERED_BY == 'github-comment-webhook') {
+                        echo "=== [BUILD] Triggered by GitHub PR #${params.GITHUB_PR_NUMBER} via ${params.TRIGGERED_BY}: \"${params.GITHUB_PR_TITLE}\" (SHA: ${params.GITHUB_PR_SHA}) ==="
+                        if (params.GITHUB_PR_SHA) {
+                            echo "=== [BUILD] Checking out PR head commit: ${params.GITHUB_PR_SHA} ==="
+                            sh "git fetch origin ${params.GITHUB_PR_SHA} && git checkout -f ${params.GITHUB_PR_SHA}"
+                        } else if (params.GITHUB_PR_NUMBER) {
+                            echo "=== [BUILD] Checking out PR #${params.GITHUB_PR_NUMBER} head ref ==="
+                            sh "git fetch origin pull/${params.GITHUB_PR_NUMBER}/head && git checkout -f FETCH_HEAD"
+                        }
+                    } else if (params.TRIGGERED_BY == 'github-issue-webhook') {
+                        echo "=== [BUILD] Triggered by GitHub Issue #${params.GITHUB_ISSUE_NUMBER}: \"${params.GITHUB_ISSUE_TITLE}\" ==="
+                    }
+                }
+            }
+        }
+
+        stage('Build and Push Docker Images') {
+            steps {
+                echo "=== [BUILD] Building Docker images (upstream build #${params.UPSTREAM_BUILD_NUMBER}) ==="
+                echo "    → Target backend  image : ${env.BACKEND_IMAGE}"
+                echo "    → Target frontend image : ${env.FRONTEND_IMAGE}"
+
+                withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', passwordVariable: 'DOCKER_PASS', usernameVariable: 'DOCKER_USER')]) {
+                    script {
+                        def buildStatus = sh(
+                            label: '[build-worker] Build and Push backend + frontend Docker images',
+                            returnStatus: true,
+                            script: """
+                                docker run --rm \\
+                                    --name build-worker-${params.UPSTREAM_BUILD_NUMBER} \\
+                                    --network ${params.PIPELINE_NETWORK} \\
+                                    -v /var/run/docker.sock:/var/run/docker.sock \\
+                                    --volumes-from jenkins \\
+                                    -e DOCKER_USER="\$DOCKER_USER" \\
+                                    -e DOCKER_PASS="\$DOCKER_PASS" \\
+                                    -w ${WORKSPACE} \\
+                                    docker:27-cli \\
+                                    sh -c "
+                                        echo '=== Logging into Docker Hub ==='
+                                        echo \\\$DOCKER_PASS | docker login -u \\\$DOCKER_USER --password-stdin
+    
+                                        echo '=== Building backend Docker image ==='
+                                        docker build -t ${env.BACKEND_IMAGE} ./backend
+    
+                                        echo '=== Building frontend Docker image ==='
+                                        docker build -t ${env.FRONTEND_IMAGE} ./frontend
+    
+                                        echo '=== Pushing backend Docker image ==='
+                                        docker push ${env.BACKEND_IMAGE}
+    
+                                        echo '=== Pushing frontend Docker image ==='
+                                        docker push ${env.FRONTEND_IMAGE}
+                                        
+                                        echo '=== Built and pushed sidequest images ==='
+                                        docker images | grep sidequest
+                                    "
+                            """
+                        )
+    
+                        if (buildStatus != 0) {
+                            error("[BUILD] Build worker container FAILED with exit code ${buildStatus}.")
+                        }
+                    }
+                }
+
+                echo "=== [BUILD] Docker images built SUCCESSFULLY ==="
+                echo "    → ${env.BACKEND_IMAGE}"
+                echo "    → ${env.FRONTEND_IMAGE}"
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "=== [BUILD] Reporting SUCCESS to master. Images: ${env.BACKEND_IMAGE}, ${env.FRONTEND_IMAGE} ==="
+        }
+        failure {
+            echo "=== [BUILD] Reporting FAILURE to master — check build-worker logs above ==="
+        }
+    }
+}

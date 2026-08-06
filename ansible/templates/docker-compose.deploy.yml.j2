@@ -1,0 +1,64 @@
+# templates/docker-compose.deploy.yml.j2
+#
+# Docker Compose file rendered by Ansible and deployed to {{ app_dir }}/docker-compose.yml
+# on the EC2 instance. Uses images that have already been pushed to Docker Hub
+# by Jenkins (Jenkinsfile.build).
+#
+# The build_version variable is injected by Ansible at deploy time:
+#   -e build_version=<UPSTREAM_BUILD_NUMBER>
+
+services:
+
+  db:
+    image: mysql:8.0
+    container_name: sidequest-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "{{ db_password }}"
+      MYSQL_DATABASE:      "{{ db_name }}"
+    ports:
+      - "{{ db_host_port }}:{{ db_port }}"
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - sidequest-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p{{ db_password }}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  backend:
+    image: "{{ backend_image }}"
+    container_name: sidequest-backend
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL:      "jdbc:mysql://db:{{ db_port }}/{{ db_name }}?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true"
+      SPRING_DATASOURCE_USERNAME: "{{ db_user }}"
+      SPRING_DATASOURCE_PASSWORD: "{{ db_password }}"
+    ports:
+      - "{{ backend_port }}:8080"
+    networks:
+      - sidequest-net
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    image: "{{ frontend_image }}"
+    container_name: sidequest-frontend
+    restart: unless-stopped
+    ports:
+      - "{{ frontend_port }}:80"
+    networks:
+      - sidequest-net
+    depends_on:
+      - backend
+
+volumes:
+  db_data:
+
+networks:
+  sidequest-net:
+    driver: bridge

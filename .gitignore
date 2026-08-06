@@ -4,3 +4,10 @@ target/
 **/dist/
 .idea/
 *.class
+
+# Webhook server secrets — NEVER commit these
+webhook-server/.env
+
+# Agent tracking & context files
+AGENTS.md
+PROGRESS.md

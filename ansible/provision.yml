@@ -1,0 +1,147 @@
+---
+# provision.yml
+#
+# ONE-TIME server setup. Run this manually (or once via Jenkins) to bootstrap
+# a fresh Ubuntu EC2 instance. After this playbook succeeds, the server is
+# ready to receive application deployments via deploy.yml.
+#
+# Usage (manual):
+#   ansible-playbook -i ansible/inventory.ini ansible/provision.yml \
+#     -e "ansible_host=<EC2_HOST>" \
+#     --private-key /path/to/ec2-key.pem
+#
+# Idempotent: safe to re-run at any time.
+
+- name: Provision EC2 Instance for Side-Quest Board
+  hosts: webservers
+  become: true
+
+  tasks:
+
+    # ── System Updates ────────────────────────────────────────────────────────
+    - name: Update apt package cache and upgrade packages
+      apt:
+        update_cache: yes
+        upgrade: safe
+        cache_valid_time: 3600
+
+    - name: Install system prerequisites
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - python3-pip
+          - ufw
+          - git
+        state: present
+
+    # ── Docker Engine ─────────────────────────────────────────────────────────
+    - name: Create /etc/apt/keyrings directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Download Docker's official GPG key
+      get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+
+    - name: Add Docker apt repository
+      apt_repository:
+        repo: >
+          deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/ubuntu
+          {{ ansible_lsb.codename }} stable
+        filename: docker
+        state: present
+
+    - name: Install Docker Engine and Docker Compose plugin
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Ensure Docker service is started and enabled
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add ubuntu user to the docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    # ── Nginx ─────────────────────────────────────────────────────────────────
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: present
+
+    - name: Ensure Nginx service is started and enabled
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+
+    # ── Application Directory ─────────────────────────────────────────────────
+    - name: Create application directory {{ app_dir }}
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    # ── Firewall ──────────────────────────────────────────────────────────────
+    - name: Allow SSH through ufw
+      ufw:
+        rule: allow
+        port: '22'
+        proto: tcp
+
+    - name: Allow HTTP through ufw
+      ufw:
+        rule: allow
+        port: '80'
+        proto: tcp
+
+    - name: Allow HTTPS through ufw
+      ufw:
+        rule: allow
+        port: '443'
+        proto: tcp
+
+    - name: Enable ufw
+      ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+
+    # ── Verify ────────────────────────────────────────────────────────────────
+    - name: Verify Docker installation
+      command: docker --version
+      register: docker_version
+      changed_when: false
+
+    - name: Verify Docker Compose installation
+      command: docker compose version
+      register: compose_version
+      changed_when: false
+
+    - name: Print installed tool versions
+      debug:
+        msg:
+          - "{{ docker_version.stdout }}"
+          - "{{ compose_version.stdout }}"

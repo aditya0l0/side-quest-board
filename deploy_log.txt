@@ -1,0 +1,148 @@
+Started by upstream project "[8mha:////4E8JBBPjrxUj2V+MJfY94XkkmQX/a9RYAxWnQK71ICvhAAAAoh+LCAAAAAAAAP9b85aBtbiIQTGjNKU4P08vOT+vOD8nVc83PyU1x6OyILUoJzMv2y+/JJUBAhiZGBgqihhk0NSjKDWzXb3RdlLBUSYGJk8GtpzUvPSSDB8G5tKinBIGIZ+sxLJE/ZzEvHT94JKizLx0a6BxUmjGOUNodHsLgAyBEgYx/az8JP3izJTUwtLU4hLd3MTiktQifQCM6nsXywAAAA==[0msidequest-master" build number [8mha:////4D0Gg6coiJIoK1VAFwRlWflR2NmuFcnz2k78Qm+QjmzGAAAApB+LCAAAAAAAAP9b85aBtbiIQTGjNKU4P08vOT+vOD8nVc83PyU1x6OyILUoJzMv2y+/JJUBAhiZGBgqihhk0NSjKDWzXb3RdlLBUSYGJk8GtpzUvPSSDB8G5tKinBIGIZ+sxLJE/ZzEvHT94JKizLx0a6BxUmjGOUNodHsLgAymEgYJ/az8JP3izJTUwtLU4hLd3MTiktQifXMTAN9ZZ3jNAAAA[0m74
+originally caused by:
+ Started by user [8mha:////4L7IMJ61MvzFeVwQ/P5HYIW/znEddOTDq0yY507IPowNAAAAmx+LCAAAAAAAAP9b85aBtbiIQTGjNKU4P08vOT+vOD8nVc83PyU1x6OyILUoJzMv2y+/JJUBAhiZGBgqihhk0NSjKDWzXb3RdlLBUSYGJk8GtpzUvPSSDB8G5tKinBIGIZ+sxLJE/ZzEvHT94JKizLx0a6BxUmjGOUNodHsLgAzBEgYB/dLi1CL9xJTMksrEIqBOAP2rw7vFAAAA[0mAditya Rudsamudra
+Obtained Jenkinsfile.deploy from git https://github.com/aditya0l0/side-quest-board.git
+[8mha:////4L6LOC7SjnAqD/ZiK3326Xsb+AZQ5DnMslvygnn1sil8AAAAoh+LCAAAAAAAAP9tjTEOwjAQBM8BClpKHuFItIiK1krDC0x8GCfWnbEdkooX8TX+gCESFVvtrLSa5wtWKcKBo5UdUu8otU4GP9jS5Mixv3geZcdn2TIl9igbHBs2eJyx4YwwR1SwULBGaj0nRzbDRnX6rmuvydanHMu2V1A5c4MHCFXMWcf8hSnC9jqYxPTz/BXAFEIGsfuclm8zQVqFvQAAAA==[0m[Pipeline] Start of Pipeline
+[8mha:////4OMFtk9qLQHn3Vb6m0yXjQ4vcZF/6XtYpjiioj3bVXOWAAAApR+LCAAAAAAAAP9tjTEOwjAUQ3+KOrAycohUghExsUZZOEFIQkgb/d8mKe3EibgadyBQiQlLlmxL1nu+oE4RjhQdby12HpP2vA+jK4lPFLtroIm3dOGaMFGwXNpJkrGnpUrKFhaxClYC1hZ1oOTRZdiIVt1VExS65pxj2Q4CKm8GeAAThZxVzN8yR9jeRpMIf5y/AJj7DGxXvP/86jduZBmjwAAAAA==[0m[Pipeline] node
+Running on [8mha:////4JBUhKmkzV0dTBgvK0o5cEStL5u4abHjhWlNAtlowPZ1AAAAoR+LCAAAAAAAAP9b85aBtbiIQTGjNKU4P08vOT+vOD8nVc83PyU1x6OyILUoJzMv2y+/JJUBAhiZGBgqihhk0NSjKDWzXb3RdlLBUSYGJk8GtpzUvPSSDB8G5tKinBIGIZ+sxLJE/ZzEvHT94JKizLx0a6BxUmjGOUNodHsLgAz2EgZR/eT83ILSktQifY2k0sycEt3MPE19AHHxbH3KAAAA[0mJenkins in /var/jenkins_home/workspace/sidequest-deploy
+[8mha:////4FuNI+T3XrnkTNjmm/u4IYz93L6SgVbNrvAzCCPOIT4sAAAApR+LCAAAAAAAAP9tjTEOwjAUQ3+KOrAycoh0gA0xsUZZOEFIQkgb/d8mKe3EibgadyBQiQlLlmxL1nu+oE4RjhQdby12HpP2vA+jK4lPFLtroIm3dOGaMFGwXNpJkrGnpUrKFhaxClYC1hZ1oOTRZdiIVt1VExS65pxj2Q4CKm8GeAAThZxVzN8yR9jeRpMIf5y/AJj7DGxXvP/86jfoP95RwAAAAA==[0m[Pipeline] {
+[8mha:////4J50oyz5NF2dMS4b5p5tqrCauQvFgI9Mm5Zkc48QJBwQAAAApR+LCAAAAAAAAP9tjTEOwjAUQ3+KOrAycoh0gQkxsUZZOEFIQkgb/d8mKe3EibgadyBQiQlLlmxL1nu+oE4RjhQdby12HpP2vA+jK4lPFLtroIm3dOGaMFGwXNpJkrGnpUrKFhaxClYC1hZ1oOTRZdiIVt1VExS65pxj2Q4CKm8GeAAThZxVzN8yR9jeRpMIf5y/AJj7DGxXvP/86jc09154wAAAAA==[0m[Pipeline] stage
+[8mha:////4ATh6p+bffQ1c07bDi8/0h7Dmo4cA0yEzizjL7X1C9skAAAApR+LCAAAAAAAAP9tjTEOwjAUQ3+KOrAycoh0ggUxsUZZOEFIQkgb/d8mKe3EibgadyBQiQlLlmxL1nu+oE4RjhQdby12HpP2vA+jK4lPFLtroIm3dOGaMFGwXNpJkrGnpUrKFhaxClYC1hZ1oOTRZdiIVt1VExS65pxj2Q4CKm8GeAAThZxVzN8yR9jeRpMIf5y/AJj7DGxXvP/86jek7ggRwAAAAA==[0m[Pipeline] { (Declarative: Checkout SCM)
+[8mha:////4JWiVmF3DaB93HkRO6jGdwoji2vT7dZehiHk8JU3HRI5AAAAoh+LCAAAAAAAAP9tjTEOAiEURD9rLGwtPQTbaWGsbAmNJ0AWEZb8zwLrbuWJvJp3kLiJlZNMMm+a93rDOic4UbLcG+wdZu14DKOti0+U+lugiXu6ck2YKRguzSSpM+cFJRUDS1gDKwEbgzpQdmgLbIVXD9UGhba9lFS/o4DGdQM8gYlqLiqVL8wJdvexy4Q/z18BzLEA29ce4gfg7KmOvAAAAA==[0m[Pipeline] checkout
+Selected Git installation does not exist. Using Default
+The recommended git tool is: NONE
+using credential github-pat
+ > git rev-parse --resolve-git-dir /var/jenkins_home/workspace/sidequest-deploy/.git # timeout=10
+Fetching changes from the remote Git repository
+ > git config remote.origin.url https://github.com/aditya0l0/side-quest-board.git # timeout=10
+Fetching upstream changes from https://github.com/aditya0l0/side-quest-board.git
+ > git --version # timeout=10
+ > git --version # 'git version 2.47.3'
+using GIT_ASKPASS to set credentials GitHub PAT for repo access
+ > git fetch --tags --force --progress -- https://github.com/aditya0l0/side-quest-board.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+ > git rev-parse refs/remotes/origin/feature-jenkins^{commit} # timeout=10
+Checking out Revision 6b538b0e93c6be79a9f0d8f4320f9f0e27700bc9 (refs/remotes/origin/feature-jenkins)
+ > git config core.sparsecheckout # timeout=10
+ > git checkout -f 6b538b0e93c6be79a9f0d8f4320f9f0e27700bc9 # timeout=10
+Commit message: "fix(ansible): resolve Docker APT repository Signed-By conflict"
+ > git rev-list --no-walk 32850bdfcdaaebe7ad4b6154a7b16da0782ed2a8 # timeout=10
+[8mha:////4KF4YqtIvUU8YpKse2bFNTwqWolx4dhbpDsA0atLGuD+AAAAoh+LCAAAAAAAAP9tjTEOAiEURD9rLGwtPQTbGRNjZUtoPAGyiLDkfxZYdytP5NW8g8RNrJxkknnTvNcb1jnBiZLl3mDvMGvHYxhtXXyi1N8CTdzTlWvCTMFwaSZJnTkvKKkYWMIaWAnYGNSBskNbYCu8eqg2KLTtpaT6HQU0rhvgCUxUc1GpfGFOsLuPXSb8ef4KYI6xADvU7j9Dg2gqvAAAAA==[0m[Pipeline] }
+[8mha:////4EHY6X60Kvckab1UR71NTYpLBGDS6f+/+dembKSO16/jAAAAoh+LCAAAAAAAAP9tjTEOAiEURD9rLGwtPQRbWRhjZUtoPAGyiLDkfxZYdytP5NW8g8RNrJxkknnTvNcb1jnBiZLl3mDvMGvHYxhtXXyi1N8CTdzTlWvCTMFwaSZJnTkvKKkYWMIaWAnYGNSBskNbYCu8eqg2KLTtpaT6HQU0rhvgCUxUc1GpfGFOsLuPXSb8ef4KYI6xADvU7j9J+wGOvAAAAA==[0m[Pipeline] // stage
+[8mha:////4LNRN7/LYacpx1hCRsxw5PU6xu3gfcGxKNL+L/nI2MapAAAAph+LCAAAAAAAAP9tjTEOwjAQBM9BKWgpeYQDEh2iorXc8AITG+PEugv2haTiRXyNPxCIRMVWOyut5vmCMic4UPKycdgGzHWQXez91ORAqb1EGmRDZ1kTZopOajdosu44oyZ2MEcUsFCwdFhHygE9w0o15m6qaNBXJ07TtldQBHuDBwg1mdkk/sKYYH3tbSb8ef4KYOwYxI6h2G4+x/INtuQqUcEAAAA=[0m[Pipeline] withEnv
+[8mha:////4Pk1YOJA1oyPYT0gSn09eNfTGIS+8Nq5VUtuUftysHsFAAAApR+LCAAAAAAAAP9tjTEOwjAUQ3+DOrAycoiUzoiJNerCCUITQtLo/zZJSSdOxNW4Ay2VmPBg2Zas93pDGQOcKBjuNHYWY2t570czJ54pdDdPmTu68pYwkte80bkhpc9rbShpWFUw2AjYamw9RYsmwU44+ZCVl2iqSwrzdhTArBrgCYWYyUmG9C1TgP19VJHwx/kLgKlPwOrDYvXyLD8BobDcwgAAAA==[0m[Pipeline] {
+[8mha:////4MYRIHQPajA2hbLYOOzk+h8pb4bzdQKOAVbb8rwWtRcGAAAAph+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycohUZUVMrFEWThCaEJJG/7dJSjpxIq7GHWipxIQHy7ZkvdcbqhjgRMEwp7GzGFvLej+aObFMobt5yszRlbWEkbxmQmdBSp/XKihpWFWUsOGw1dh6ihZNgh138iFrL9HUlxTm7cihtGqAJxR8JicZ0rdMAfb3UUXCH+cvAKY+Qdk0ix2WZ/UBbwyqm8IAAAA=[0m[Pipeline] withEnv
+[8mha:////4GQDzwfibaZhl1MYOIxzve4NYAsqMPO2ajDNiXFLyzv4AAAAph+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycohUwIiYukZZOEFoQkgb/V9+UtqJE3E17kBLJSY8WLYl673eUESGE7ETjcXWY6y96ELvpiQG4vYaaBANXURNGClYoeygyNhqqYqShUVZDisJa4t1oOjRJdjIRj90GTS68px42o4Scm/u8IRMTuSkOX3LyLC99SYS/jh/ATB2CfLdfrbD/Cw+y7kUycIAAAA=[0m[Pipeline] {
+[8mha:////4L5kZj46HxdCahay+NP/qwkBoeobsvwvPiEW29kmWzV7AAAApx+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycohUCDbE1DXKwglCE0La6P/yk9JOnIircQdaKjHhwbItWe/1hiIynIidaCy2HmPtRRd6NyUxELfXQINo6CJqwkjBCmUHRcZWS1WULCzKclhJWFusA0WPLsFGNvqhy6DRlefE03aUkHtzhydkciInzelbRobtrTeR8Mf5C4CxS5Dv9rMd5mfxAbNWnxXCAAAA[0m[Pipeline] timestamps
+[8mha:////4Nyxr3jEo61CEP+GOoIhe7/q6OVVs+fO3XAJFMzZWBe6AAAApx+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycohUSDAhpq5RFk4QmhDSRv+Xn5R24kRcjTvQUokJD5ZtyXqvNxSR4UTsRGOx9RhrL7rQuymJgbi9BhpEQxdRE0YKVig7KDK2WqqiZGFRlsNKwtpiHSh6dAk2stEPXQaNrjwnnrajhNybOzwhkxM5aU7fMjJsb72JhD/OXwCMXYJ8t5/tMD+LD5WQ+PfCAAAA[0m[Pipeline] {
+[8mha:////4BkK3QwR4q/UUixOGY4UE6Hzr3PvPMKJHPUocYL0UeTgAAAApx+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycohUDLAgpq5RFk4QmhDSRv+Xn5R24kRcjTvQUokJD5ZtyXqvNxSR4UTsRGOx9RhrL7rQuymJgbi9BhpEQxdRE0YKVig7KDK2WqqiZGFRlsNKwtpiHSh6dAk2stEPXQaNrjwnnrajhNybOzwhkxM5aU7fMjJsb72JhD/OXwCMXYJ8t5/tMD+LD/s94rDCAAAA[0m[Pipeline] timeout
+[2026-08-03T06:54:26.828Z] Timeout set to expire in 20 min
+[8mha:////4OVaPxwVBJ5xw5k0s16QLBFyCuvoaHA25Zg9CeYK6DSnAAAApx+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycohULDAgpq5RFk4QmhDSRv+Xn5R24kRcjTvQUokJD5ZtyXqvNxSR4UTsRGOx9RhrL7rQuymJgbi9BhpEQxdRE0YKVig7KDK2WqqiZGFRlsNKwtpiHSh6dAk2stEPXQaNrjwnnrajhNybOzwhkxM5aU7fMjJsb72JhD/OXwCMXYJ8t5/tMD+LD1+IXOLCAAAA[0m[Pipeline] {
+[8mha:////4HfdKBGgcv7T0MeeSx2oXm9AqlRaqIxmvpkf9M2U/VpMAAAApx+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycohUTCAhpq5RFk4QmhDSRv+Xn5R24kRcjTvQUokJD5ZtyXqvNxSR4UTsRGOx9RhrL7rQuymJgbi9BhpEQxdRE0YKVig7KDK2WqqiZGFRlsNKwtpiHSh6dAk2stEPXQaNrjwnnrajhNybOzwhkxM5aU7fMjJsb72JhD/OXwCMXYJ8t5/tMD+LD0rlhNLCAAAA[0m[Pipeline] stage
+[8mha:////4Iyj9Thih2oz3oKirqfNYfpIaD18iFMbgM1ciDqhu95vAAAApx+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycohUbCDE1DXKwglCE0La6P/yk9JOnIircQdaKjHhwbItWe/1hiIynIidaCy2HmPtRRd6NyUxELfXQINo6CJqwkjBCmUHRcZWS1WULCzKclhJWFusA0WPLsFGNvqhy6DRlefE03aUkHtzhydkciInzelbRobtrTeR8Mf5C4CxS5Dv9rMd5mfxASnCIIrCAAAA[0m[Pipeline] { (Validate & Checkout)
+[8mha:////4BBivYhbZrjig7NXIlwPkNiUm8RlyFVi0LnQ8/4bVbizAAAApx+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycogU2BDqxBp14QShCSFp9H9JUtKJE3E17kCgEhMeLNuS9Z4vqIKHhrxmVmFvMHSGDW7UObFEvr84SszSmXWEgZxirUotSXWca0tRwayihAWHpcLOUTCoI6y4FXdRO4G6PkWftwOH0sgbPKDgmRyFj98yeVhfRxkIf5y/AJiGCOV2n223+TyrN7xWSV3CAAAA[0m[Pipeline] script
+[8mha:////4Ed3igugMXO8RE88Qd5B844RHkxujgQCxYj6wDmvZh/kAAAAph+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycogUWBFT1ygLJwhNCGmj/8tPSjtxIq7GHWipxIQHy7ZkvdcbishwInaisdh6jLUXXejdlMRA3F4DDaKhi6gJIwUrlB0UGVstVVGysCjLYSVhbbEOFD26BBvZ6Icug0ZXnhNP21FC7s0dnpDJiZw0p28ZGba33kTCH+cvAMYuQX7Yzbafn8UHbGnGmsIAAAA=[0m[Pipeline] {
+[8mha:////4JF+VAt9lfE/kY9ew6EyRWq2qM5yYDBHQKs1hg1GkcXdAAAAox+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIi0iIqWisNLzCJMXasO8d2cCpexNf4A4FIVGyx2tlmni9YxwBHDhqtot5QbA16N+p5YebQXx1ntHzBlimyU9io3HCnTgs2nBQsKUpYCdgoah1HQzrBVlh5l5WTpKtzCvN3EFCaboAHFGI2JxnSF6YAu9vYRaaf568AJp+grPefqv0bH7uiub4AAAA=[0m[Pipeline] echo
+[2026-08-03T06:54:27.010Z] === [DEPLOY] Deploying build #74 to EC2 host: 16.171.42.228 ===
+[8mha:////4ECSKg3B0bDsPdTSF5V601SuxTRrqc1NM8k4JOE5k48wAAAAox+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIioERUaS03vMDExjix7oztkFS8iK/xBwKRqNhitbPNPF+wTBGOHC22hjpHqXEYfG+nhQPH7uJ5wJbP2DAl9galGSRrU88oORuYU5SwELAy1HhOjmyGtWjVXVVeka1OOU7fQUDp9A0eUIjJnFXMXxgjbK69Tkw/z18BjCFkKHf7T23f36y8/b4AAAA=[0m[Pipeline] }
+[8mha:////4J4T64sYAn5UGsF6JwQs4ZmIW+F5eU5yPMqiuUxkjRDcAAAApB+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOKCEB2iSmu54QUmNsaJdWdsh6TiRXyNPxCIRMUWq51t5vmCZYpw5GixNdQ5So3D4Hs7LRw4dhfPA7Z8xoYpsTcozSBZm3pGydnAnKKEhYCVocZzcmQzrEWr7qryimx1ynH6DgJKp2/wgEJM5qxi/sIYYXPtdWL6ef4KYAwhQ7nbf2r7BvGsvpe+AAAA[0m[Pipeline] // script
+[8mha:////4DiMeFcceUBbDmXdLMz2+i5FiKQPdZHXFQ61yi/KAl+WAAAAph+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIikCgQSkVrueEFJjHGiXUXbAen4kV8jT9gEYmKLVY728zrDcvgoWZvsNPUWwqNxcGNJi9M7Pur44QdX7BhCuw0Sp0kt/o0o+SoYU5RwkLASlPjOFgyEdaiUw9VOUWmOkefv6OA0rZ3eEIhsjkqH78wedjcxjYw/Tx/BTANQ4Ryt8+1PXwAM5QTDr4AAAA=[0m[Pipeline] }
+[8mha:////4Lau8SMYF8s1pA6HB+ulP9jj6GtrxId9nPJpiFTZ+krnAAAAph+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIiKBASSkVrueEFJjHGiXUXbAen4kV8jT9gEYmKLVY728zrDcvgoWZvsNPUWwqNxcGNJi9M7Pur44QdX7BhCuw0Sp0kt/o0o+SoYU5RwkLASlPjOFgyEdaiUw9VOUWmOkefv6OA0rZ3eEIhsjkqH78wedjcxjYw/Tx/BTANQ4Ryt8+1PXwAC9aA/74AAAA=[0m[Pipeline] // stage
+[8mha:////4BQKSDHFDE1LZWXhhl0yw+1ovVecksq/NfDSkY4bCGvhAAAAqB+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycohUsHRATF2jLJwgJCGkjf4vSUo7cSKuxh0IVGLCg2Vbst7zBVUMcKRgWWewdxiVY4MfbU5sotBfPE2sozNThJG8YcJMgrRplyooGVhUlLDisDaoPEWHNsGGd/Iuay/R1qcU8nbgUDp9gwcUPJOTDOlb5gDb66gj4Y/zFwDzkKDcNdn2zedZvQECTToSwgAAAA==[0m[Pipeline] stage
+[8mha:////4I91HAWTCX2RhFSh2XtSQzmc74bVi/bnqOwWOny4lM10AAAAqB+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycohUYgEJMXWNsnCC0ISQNvq//KS0EyfiatyBlkpMeLBsS9Z7vaGIDCdiJxqLrcdYe9GF3k1JDMTtNdAgGrqImjBSsELZQZGx1VIVJQuLshxWEtYW60DRo0uwkY1+6DJodOU58bQdJeTe3OEJmZzISXP6lpFhe+tNJPxx/gJg7BLku/1sh/lZfAAnLfKUwgAAAA==[0m[Pipeline] { (Run Ansible Deploy)
+[8mha:////4LyaYAmtjRzmjMcdwQhTbiYQ7G77g9MhVEcolcXjPo+4AAAApx+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycohUYgIhpq5RFk4QmhDSRv+Xn5R24kRcjTvQUokJD5ZtyXqvNxSR4UTsRGOx9RhrL7rQuymJgbi9BhpEQxdRE0YKVig7KDK2WqqiZGFRlsNKwtpiHSh6dAk2stEPXQaNrjwnnrajhNybOzwhkxM5aU7fMjJsb72JhD/OXwCMXYJ8t5/tMD+LD0QKVszCAAAA[0m[Pipeline] script
+[8mha:////4Bxm3aYqMHBW8Y5F7+HhrVWeJBLrcFYmMH6eb3pk+lddAAAAqB+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycogUwYRQJ9aoCycITQhJo/9LkpJOnIircQcClZjwYNmWrPd8QRU8NOQ1swp7g6EzbHCjzokl8v3FUWKWzqwjDOQUa1VqSarjXFuKCmYVJSw4LBV2joJBHWHFrbiL2gnU9Sn6vB04lEbe4AEFz+QofPyWycP6OspA+OP8BcA0RCi3+2y7zedZvQH4j6CMwgAAAA==[0m[Pipeline] {
+[8mha:////4DBwmbfbPqwMzzXyLjAS/rx5M0QdFKpVDAmkUM/vvaWFAAAAph+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycogUxIiYukZZOEFoQkgb/V9+UtqJE3E17kBLJSY8WLYl673eUESGE7ETjcXWY6y96ELvpiQG4vYaaBANXURNGClYoeygyNhqqYqShUVZDisJa4t1oOjRJdjIRj90GTS68px42o4Scm/u8IRMTuSkOX3LyLC99SYS/jh/ATB2CfLDbrb9/Cw+ty4Up8IAAAA=[0m[Pipeline] withCredentials
+[2026-08-03T06:54:27.263Z] Masking supported pattern matches of $EC2_KEY_FILE or $DOCKER_PASS or $DB_PASS
+[8mha:////4J0yZnaPou7eDFH7rFQqw0qpy8GJ3/edZB1Ov6RUTpvWAAAAph+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycohUwIiYukZZOEFoQkgb/V9+UtqJE3E17kBLJSY8WLYl673eUESGE7ETjcXWY6y96ELvpiQG4vYaaBANXURNGClYoeygyNhqqYqShUVZDisJa4t1oOjRJdjIRj90GTS68px42o4Scm/u8IRMTuSkOX3LyLC99SYS/jh/ATB2CfLDbrb9/Cw+2YMO4MIAAAA=[0m[Pipeline] {
+[8mha:////4JFYjcGWgYNWZGvpziU24wCObsdKVZn+z4r9gtM6UA8XAAAAox+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIikRJR0VppeIFJjLFj3Tm2g1PxIr7GHwhEomKL1c4283zBOgY4ctBoFfWGYmvQu1HPCzOH/uo4o+ULtkyRncJG5YY7dVqw4aRgSVHCSsBGUes4GtIJtsLKu6ycJF2dU5i/g4DSdAM8oBCzOcmQvjAF2N3GLjL9PH8FMPkEZb3/VO3favo5XL4AAAA=[0m[Pipeline] sh
+[2026-08-03T06:54:27.590Z] + set -o pipefail
+[2026-08-03T06:54:27.590Z] + docker run --rm --name deploy-worker-74 --network sidequest-ci-74 --volumes-from jenkins -e EC2_KEY_FILE=**** -e DOCKER_PASS=**** -e DB_PASS=**** -e ANSIBLE_HOST_KEY_CHECKING=False -e ANSIBLE_CONFIG=/var/jenkins_home/workspace/sidequest-deploy/ansible/ansible.cfg -w /var/jenkins_home/workspace/sidequest-deploy cytopia/ansible:latest-tools sh -c 
+[2026-08-03T06:54:27.590Z]                                         echo '=== Setting SSH key permissions ==='
+[2026-08-03T06:54:27.590Z]                                         chmod 400 "****"
+[2026-08-03T06:54:27.590Z] 
+[2026-08-03T06:54:27.590Z]                                         echo '=== Executing Ansible deploy playbook ==='
+[2026-08-03T06:54:27.590Z]                                         ansible-playbook                                             -i ansible/inventory.ini                                             ansible/deploy.yml                                             --private-key "****"                                             -e ansible_host='16.171.42.228'                                             -e build_version='74'                                             -e docker_hub_user='aditya0l0'                                             -e docker_hub_password="****"                                             -e db_password="****"                                             -v
+[2026-08-03T06:54:27.590Z]                                     
+[2026-08-03T06:54:27.590Z] + tee /var/jenkins_home/workspace/sidequest-deploy/ansible-deploy-74.log
+[2026-08-03T06:54:27.842Z] [INFO] root> sh -c 
+[2026-08-03T06:54:27.842Z]                                         echo '=== Setting SSH key permissions ==='
+[2026-08-03T06:54:27.842Z]                                         chmod 400 "****"
+[2026-08-03T06:54:27.842Z] 
+[2026-08-03T06:54:27.842Z]                                         echo '=== Executing Ansible deploy playbook ==='
+[2026-08-03T06:54:27.842Z]                                         ansible-playbook                                             -i ansible/inventory.ini                                             ansible/deploy.yml                                             --private-key "****"                                             -e ansible_host='16.171.42.228'                                             -e build_version='74'                                             -e docker_hub_user='aditya0l0'                                             -e docker_hub_password="****"                                             -e db_password="****"                                             -v
+[2026-08-03T06:54:27.842Z]                                     
+[2026-08-03T06:54:27.842Z] === Setting SSH key permissions ===
+[2026-08-03T06:54:27.842Z] === Executing Ansible deploy playbook ===
+[2026-08-03T06:54:30.330Z] Using /var/jenkins_home/workspace/sidequest-deploy/ansible/ansible.cfg as config file
+[2026-08-03T06:54:30.330Z] 
+[2026-08-03T06:54:30.330Z] PLAY [Deploy Side-Quest Board (build 74)] **************************************
+[2026-08-03T06:54:30.330Z] 
+[2026-08-03T06:54:30.330Z] TASK [Gathering Facts] *********************************************************
+[2026-08-03T06:54:42.918Z] ok: [ec2_instance]
+[2026-08-03T06:54:42.918Z] 
+[2026-08-03T06:54:42.918Z] TASK [Remove stopped containers (pre-flight)] **********************************
+[2026-08-03T06:54:42.918Z] ok: [ec2_instance] => {"changed": false, "changed_when_result": false, "cmd": ["docker", "container", "prune", "-f"], "delta": "0:00:00.322402", "end": "2026-08-03 06:54:42.612969", "failed_when_result": false, "msg": "", "rc": 0, "start": "2026-08-03 06:54:42.290567", "stderr": "", "stderr_lines": [], "stdout": "Total reclaimed space: 0B", "stdout_lines": ["Total reclaimed space: 0B"]}
+[2026-08-03T06:54:42.918Z] 
+[2026-08-03T06:54:42.918Z] TASK [Remove dangling Docker images (pre-flight)] ******************************
+[2026-08-03T06:54:44.269Z] ok: [ec2_instance] => {"changed": false, "changed_when_result": false, "cmd": ["docker", "image", "prune", "-f"], "delta": "0:00:00.117177", "end": "2026-08-03 06:54:43.981043", "failed_when_result": false, "msg": "", "rc": 0, "start": "2026-08-03 06:54:43.863866", "stderr": "", "stderr_lines": [], "stdout": "Total reclaimed space: 0B", "stdout_lines": ["Total reclaimed space: 0B"]}
+[2026-08-03T06:54:44.269Z] 
+[2026-08-03T06:54:44.269Z] TASK [Remove unused Docker volumes (pre-flight)] *******************************
+[2026-08-03T06:54:45.615Z] ok: [ec2_instance] => {"changed": false, "changed_when_result": false, "cmd": ["docker", "volume", "prune", "-f"], "delta": "0:00:00.027228", "end": "2026-08-03 06:54:44.965970", "failed_when_result": false, "msg": "", "rc": 0, "start": "2026-08-03 06:54:44.938742", "stderr": "", "stderr_lines": [], "stdout": "Total reclaimed space: 0B", "stdout_lines": ["Total reclaimed space: 0B"]}
+[2026-08-03T06:54:45.615Z] 
+[2026-08-03T06:54:45.615Z] TASK [Install apt dependencies for Docker repository] **************************
+[2026-08-03T06:54:49.744Z] [ERROR]: Task failed: Module failed: E:Conflicting values set for option Signed-By regarding source https://download.docker.com/linux/ubuntu/ resolute: /usr/share/keyrings/docker.asc != /usr/share/keyrings/docker.gpg, E:The list of sources could not be read.
+[2026-08-03T06:54:49.744Z] Origin: /var/jenkins_home/workspace/sidequest-deploy/ansible/deploy.yml:49:7
+[2026-08-03T06:54:49.744Z] 
+[2026-08-03T06:54:49.744Z] 47
+[2026-08-03T06:54:49.745Z] 48     # ── Install Prerequisites (idempotent) ────────────────────────────────────
+[2026-08-03T06:54:49.745Z] 49     - name: Install apt dependencies for Docker repository
+[2026-08-03T06:54:49.745Z]          ^ column 7
+[2026-08-03T06:54:49.745Z] 
+[2026-08-03T06:54:49.745Z] fatal: [ec2_instance]: FAILED! => {"changed": false, "msg": "E:Conflicting values set for option Signed-By regarding source https://download.docker.com/linux/ubuntu/ resolute: /usr/share/keyrings/docker.asc != /usr/share/keyrings/docker.gpg, E:The list of sources could not be read."}
+[2026-08-03T06:54:49.745Z] 
+[2026-08-03T06:54:49.745Z] PLAY RECAP *********************************************************************
+[2026-08-03T06:54:49.745Z] ec2_instance               : ok=4    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0   
+[2026-08-03T06:54:49.745Z] 
+[2026-08-03T06:54:49.745Z] 
+[2026-08-03T06:54:49.745Z] PLAYBOOK RECAP *****************************************************************
+[2026-08-03T06:54:49.745Z] Playbook run took 0 days, 0 hours, 0 minutes, 19 seconds
+[2026-08-03T06:54:49.745Z] 
+[8mha:////4MrvsvN6zcCTJP4VKE6VVNuQE/Q0NqAH7byBLtXECVYpAAAApB+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIiAR2iSmu54QUmNsaJdWdsh6TiRXyNPxCIRMUWq51t5vmCZYpw5GixNdQ5So3D4Hs7LRw4dhfPA7Z8xoYpsTcozSBZm3pGydnAnKKEhYCVocZzcmQzrEWr7qryimx1ynH6DgJKp2/wgEJM5qxi/sIYYXPtdWL6ef4KYAwZyt32U/vwBq1seBO+AAAA[0m[Pipeline] sh
+[2026-08-03T06:54:50.286Z] + grep -q skipping: no hosts matched /var/jenkins_home/workspace/sidequest-deploy/ansible-deploy-74.log
+[8mha:////4L5TvlKJodaOxTX6uX0ppW9yUqDldZBDPvcEzpqmZpCIAAAApB+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIigagQVVrLDS8wsTFOrDtjOyQVL+Jr/IFAJCq2WO1sM88XLFOEI0eLraHOUWocBt/baeHAsbt4HrDlMzZMib1BaQbJ2tQzSs4G5hQlLASsDDWekyObYS1adVeVV2SrU47TdxBQOn2DBxRiMmcV8xfGCJtrrxPTz/NXAGPIUO62n9qHN+xdYwq+AAAA[0m[Pipeline] sh
+[2026-08-03T06:54:50.645Z] + grep -q UNREACHABLE /var/jenkins_home/workspace/sidequest-deploy/ansible-deploy-74.log
+[8mha:////4DSW6g+tn55n/IXIDgTZlrXO1cyQdY1W4zWmBevXDomRAAAApR+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIigUSDqNJabniBiY1xYt0Z2yGpeBFf4w8EIlGxxWpnm3m+YJkiHDlabA11jlLjMPjeTgsHjt3F84Atn7FhSuwNSjNI1qaeUXI2MKcoYSFgZajxnBzZDGvRqruqvCJbnXKcvoOA0ukbPKAQkzmrmL8wRthce52Yfp6/AhhDhnK3/dQ+vAEvDk4hvgAAAA==[0m[Pipeline] sh
+[2026-08-03T06:54:51.009Z] + grep -q FAILED! /var/jenkins_home/workspace/sidequest-deploy/ansible-deploy-74.log
+[8mha:////4KSMRizR0/pXBiwJ5LqMrAIcn2/ZYpcBFqIy8MxHFataAAAApR+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIiQUGBqNJabniBiY1xYt0Z2yGpeBFf4w8EIlGxxWpnm3m+YJkiHDlabA11jlLjMPjeTgsHjt3F84Atn7FhSuwNSjNI1qaeUXI2MKcoYSFgZajxnBzZDGvRqruqvCJbnXKcvoOA0ukbPKAQkzmrmL8wRthce52Yfp6/AhhDhnK3/dQ+vAFuP1U4vgAAAA==[0m[Pipeline] error
+[8mha:////4FzUCZA3IPdonIKvEGe5K3Ha1Vz1DnIlkLIERfFkoVZzAAAApR+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIiQYOEqNJabniBiY1xYt0Z2yGpeBFf4w8EIlGxxWpnm3m+YJkiHDlabA11jlLjMPjeTgsHjt3F84Atn7FhSuwNSjNI1qaeUXI2MKcoYSFgZajxnBzZDGvRqruqvCJbnXKcvoOA0ukbPKAQkzmrmL8wRthce52Yfp6/AhhDyFDu9p/avgFTNx6xvgAAAA==[0m[Pipeline] }
+[8mha:////4GwIQLrnKTslDMkdWQ2rGN/1xpJQilYn1CiPBoeGPQmEAAAApB+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIiRIUQVVrLDS8wsTFOrDtjOyQVL+Jr/IFAJCq2WO1sM88XLFOEI0eLraHOUWocBt/baeHAsbt4HrDlMzZMib1BaQbJ2tQzSs4G5hQlLASsDDWekyObYS1adVeVV2SrU47TdxBQOn2DBxRiMmcV8xfGCJtrrxPTz/NXAGMIGcrd/lPbN0y1S+O+AAAA[0m[Pipeline] // withCredentials
+[8mha:////4NPWl2sQ+RFnVqtyntiMFVP+6p4EYcKQuDOZ0zkJepN4AAAApB+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOISCTpEldZKwwtMbIwT687YDknFi/gaf8AiEhVbrHa2mdcb1jHAiYPBXtNgKXYWvRtNXjhxGK6OJ+z5gh1TZKex1VPLSjcLtpw0LClKWAnYaOocR0smwVb08iErJ8lU5xTydxRQWnWHJxQim5MM6QtzgN1tVJHp5/krgNn7BOWhzrWvP5zq5Ha+AAAA[0m[Pipeline] }
+[8mha:////4FZfHSjM0kyl5Tsu7MgP64PA7vioZQS8yObANQQclcDbAAAApR+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIiEA1CqWgtN7zAJMY4se6C7eBUvIiv8QcsIlGxxWpnm3m9YRk81OwNdpp6S6GxOLjR5IWJfX91nLDjCzZMgZ1GqZPkVp9mlBw1zClKWAhYaWocB0smwlp06qEqp8hU5+jzdxRQ2vYOTyhENkfl4xcmD5vb2Aamn+evAKZhiFDut7l2hw/csH/dvgAAAA==[0m[Pipeline] // script
+[8mha:////4BCzukiEoavLBXYe+12mL43VtemneVPrQzhpmkzdZlJBAAAAph+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIiRRRIiCqtlYYXmNgYJ9adsR2SihfxNf6ARSQqtljtbDOvN6xjgBMHg72mwVLsLHo3mrxw4jBcHU/Y8wU7pshOY6unlpVuFmw5aVhSlLASsNHUOY6WTIKt6OVDVk6Sqc4p5O8ooLTqDk8oRDYnGdIX5gC726gi08/zVwCz9wnKfZ2rPnwA5PLsLL4AAAA=[0m[Pipeline] }
+[8mha:////4BVsv785AGS34XJrzFdIfNp+fQP4DA6KrW5kgFkuUYN+AAAAph+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIiARIFSkVrueEFJjHGiXUXbAen4kV8jT9gEYmKLVY728zrDcvgoWZvsNPUWwqNxcGNJi9M7Pur44QdX7BhCuw0Sp0kt/o0o+SoYU5RwkLASlPjOFgyEdaiUw9VOUWmOkefv6OA0rZ3eEIhsjkqH78wedjcxjYw/Tx/BTANQ4Ryv8u1PXwA0DwPd74AAAA=[0m[Pipeline] // stage
+[8mha:////4EHUAgONEETO6BOpBUxbxb6MlArma2nvcaf9l7HcKZhvAAAAqB+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycohUSJUYEFPXKAsnCEkIaaP/S5LSTpyIq3EHApWY8GDZlqz3fEEVAxwpWNYZ7B1G5djgR5sTmyj0F08T6+jMFGEkb5gwkyBt2qUKSgYWFSWsOKwNKk/RoU2w4Z28y9pLtPUphbwdOJRO3+ABBc/kJEP6ljnA9jrqSPjj/AXAPCQod/tsTfN5Vm+WCn73wgAAAA==[0m[Pipeline] stage
+[8mha:////4HnKiYI/iyFv5rScD2XAJiaqgKxzZ3tDX0r+4LGLmC6oAAAAph+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycoh0KRNiYo2ycILQhJA0+r9NUtKJE3E17kBLJSY8WLYl673eUMUAJwqGOY2dxdha1vvRzIllCt3NU2aOrqwljOQ1EzoLUvq8VkFJw6qihA2HrcbWU7RoEuy4kw9Ze4mmvqQwb0cOpVUDPKHgMznJkL5lCrC/jyoS/jh/ATD1CcqmWeywPKsPIshjPcIAAAA=[0m[Pipeline] { (Declarative: Post Actions)
+[8mha:////4Eli2wei+Taw/LHX8n3xAlrEJK/kfXjLAH3TMIgwLj9aAAAApx+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycoh0ARbE1DXKwglCE0La6P/yk9JOnIircQdaKjHhwbItWe/1hiIynIidaCy2HmPtRRd6NyUxELfXQINo6CJqwkjBCmUHRcZWS1WULCzKclhJWFusA0WPLsFGNvqhy6DRlefE03aUkHtzhydkciInzelbRobtrTeR8Mf5C4CxS5Dv9rMd5mfxAUxleXrCAAAA[0m[Pipeline] script
+[8mha:////4PyIW6yp1hyAQg8UAtii9mjFGjlaBfZvhmkb4btT07lYAAAApx+LCAAAAAAAAP9tjTEOwjAUQ3+LOrAycoh0QTAgpq5RFk4QmhDSRv+Xn5R24kRcjTvQUokJD5ZtyXqvNxSR4UTsRGOx9RhrL7rQuymJgbi9BhpEQxdRE0YKVig7KDK2WqqiZGFRlsNKwtpiHSh6dAk2stEPXQaNrjwnnrajhNybOzwhkxM5aU7fMjJsb72JhD/OXwCMXYJ8t5/tMD+LD+jQxyjCAAAA[0m[Pipeline] {
+[8mha:////4BIo5BkTYLz6w8A9YshQDb1BR2EKlx4qr+nse+3MHx+4AAAApR+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOLSIIGEqNJabniBiY1xYt0Z2yGpeBFf4w8EIlGxxWpnm3m+YJkiHDlabA11jlLjMPjeTgsHjt3F84Atn7FhSuwNSjNI1qaeUXI2MKcoYSFgZajxnBzZDGvRqruqvCJbnXKcvoOA0ukbPKAQkzmrmL8wRthce52Yfp6/AhhDhnK7+9Q+vAGaE3/ivgAAAA==[0m[Pipeline] fileExists
+[8mha:////4DSGCFmjxie5LQW3iI46qfVua3iuTfRZSyG8ZZ6xZ6sNAAAApR+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOLSICGEqNJabniBiY1xYt0Z2yGpeBFf4w8EIlGxxWpnm3m+YJkiHDlabA11jlLjMPjeTgsHjt3F84Atn7FhSuwNSjNI1qaeUXI2MKcoYSFgZajxnBzZDGvRqruqvCJbnXKcvoOA0ukbPKAQkzmrmL8wRthce52Yfp6/AhhDhnK7+9Q+vAHbImT7vgAAAA==[0m[Pipeline] archiveArtifacts
+[2026-08-03T06:54:52.262Z] Archiving artifacts
+[8mha:////4KlOOQE/GmLN1PD3MMJ2crNafub8NWsUO1jKCzdLb3FOAAAApR+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOJCAaJAqWgtN7zAJMY4se6C7eBUvIiv8QcsIlGxxWpnm3m9YRk81OwNdpp6S6GxOLjR5IWJfX91nLDjCzZMgZ1GqZPkVp9mlBw1zClKWAhYaWocB0smwlp06qEqp8hU5+jzdxRQ2vYOTyhENkfl4xcmD5vb2Aamn+evAKZhiFDut7l2hw9M4rYBvgAAAA==[0m[Pipeline] }
+[8mha:////4AMlrhwVCqVNgXTdc947k8eMuAHOegS3drs4fGtdnw6PAAAApR+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIiJKBBqWgtN7zAJMY4se6C7eBUvIiv8QcsIlGxxWpnm3m9YRk81OwNdpp6S6GxOLjR5IWJfX91nLDjCzZMgZ1GqZPkVp9mlBw1zClKWAhYaWocB0smwlp06qEqp8hU5+jzdxRQ2vYOTyhENkfl4xcmD5vb2Aamn+evAKZhiFDut7l2hw9/Ae29vgAAAA==[0m[Pipeline] // script
+[8mha:////4GfQuG6Vxb814/ClWYNRdVB6MGP+SdVef9v2zo2OLGsHAAAApR+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIiIVIhqrRWGl5gYmOcWHfGdkgqXsTX+AMWkajYYrWzzbzesI4BThwM9poGS7Gz6N1o8sKJw3B1PGHPF+yYIjuNrZ5aVrpZsOWkYUlRwkrARlPnOFoyCbailw9ZOUmmOqeQv6OA0qo7PKEQ2ZxkSF+YA+xuo4pMP89fAcw+QXmoc9V7/wEOgM2OvgAAAA==[0m[Pipeline] echo
+[2026-08-03T06:54:52.543Z] === [DEPLOY] ❌ Deployment FAILED — check Ansible output above for details ===
+[8mha:////4BrZ7ZvWMHQ2U884+wfUWu2ThMGr6s6CWKm+xumCh+huAAAApB+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOJSQCpEldZKwwtMbIwT687YDknFi/gaf8AiEhVbrHa2mdcb1jHAiYPBXtNgKXYWvRtNXjhxGK6OJ+z5gh1TZKex1VPLSjcLtpw0LClKWAnYaOocR0smwVb08iErJ8lU5xTydxRQWnWHJxQim5MM6QtzgN1tVJHp5/krgNn7BGW9z3WoP87xLGm+AAAA[0m[Pipeline] }
+[8mha:////4N1ru06ir8RUfhBYCYPPO3CRtH9q85JSltbbKIN70RpEAAAApB+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPMJpQoWoaC03vMAkxtix7ox9Ial4EV/jD1hEomKL1c4283rDOic4UrLCGxwc5s6JGEZblpgoDddAk/B0ER1hpmCEMpOi3pwWVMQGllQ1rCRsDHaBskPLsJVeP3QTNNrmzKl8Bwm16+/whEoWM+vEX5gT7G5jnwl/nr8CmGNkqPdtqbb9AODxLgO+AAAA[0m[Pipeline] // stage
+[8mha:////4L619/tBXipcrRVXWDmJD7zTlUGcNgGv4C2aIhkX8S6QAAAApR+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPMIRRUSBqNJaaXiBiQ/jxLoztkNS8SK+xh+wiETFFqudbeb1hnUMcOJgRI80WIqdFd6NJi8xcRiujifR80V0TJEdihanljU2C7acEJYUJawkbJA6x9GSSbCVvXqoyiky1TmF/B0llFbf4QmFzOakQvrCHGB3G3Vk+nn+CmD2PkFZ17n2hw+6hwwsvgAAAA==[0m[Pipeline] }
+[8mha:////4KNkXZ50b5PVw6InhebHDiavhrEyFpTuUOVzs9pL/nbKAAAApR+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIiCtIgqrRWGl5gYmOcWHfGdkgqXsTX+AMWkajYYrWzzbzesI4BThwM9poGS7Gz6N1o8sKJw3B1PGHPF+yYIjuNrZ5aVrpZsOWkYUlRwkrARlPnOFoyCbailw9ZOUmmOqeQv6OA0qo7PKEQ2ZxkSF+YA+xuo4pMP89fAczeJygPda59/QGCxZ/dvgAAAA==[0m[Pipeline] // timeout
+[8mha:////4HdN/jtHudFrYqyWg3Htd/E6k+n6t9iVoI6rOUGoRaFMAAAApR+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPMIRRUSBqNJaaXiBiQ/jxLoztkNS8SK+xh+wiETFFqudbeb1hnUMcOJgRI80WIqdFd6NJi8xcRiujifR80V0TJEdihanljU2C7acEJYUJawkbJA6x9GSSbCVvXqoyiky1TmF/B0llFbf4QmFzOakQvrCHGB3G3Vk+nn+CmD2PkFZH3Lt6w+dR8qPvgAAAA==[0m[Pipeline] }
+[8mha:////4GT6wgaxbX2wWDn0WpLbry6T0PSt9V+eS1AQ6acYDYyPAAAAph+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIiJJCQUCpayw0vMIkxTqy7YDs4FS/ia/wBi0hUbLHa2WZeb1gGDzV7g52m3lJoLA5uNHlhYt9fHSfs+IINU2CnUeokudWnGSVHDXOKEhYCVpoax8GSibAWnXqoyiky1Tn6/B0FlLa9wxMKkc1R+fiFycPmNraB6ef5K4BpGCKU+0Ou7e4D3sWbCb4AAAA=[0m[Pipeline] // timestamps
+[8mha:////4FKH6sfIr4bgeeHLDVH0mgx4NF256/gf4tYFAIiwoPfLAAAAph+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOIihCgQSkVrueEFJjHGiXUXbAen4kV8jT9gEYmKLVY728zrDcvgoWZvsNPUWwqNxcGNJi9M7Pur44QdX7BhCuw0Sp0kt/o0o+SoYU5RwkLASlPjOFgyEdaiUw9VOUWmOkefv6OA0rZ3eEIhsjkqH78wedjcxjYw/Tx/BTANQ4Ryf8i13X0A2IOjXL4AAAA=[0m[Pipeline] }
+[8mha:////4JYBf2eP2AbRpgOIMNbivSGFeggLCckcwx93g00LYRR0AAAApR+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOICFDQoFa3lhheYxBgn1l2wHZyKF/E1/oBFJCq2WO1sM683LIOHmr3BTlNvKTQWBzeavDCx76+OE3Z8wYYpsNModZLc6tOMkqOGOUUJCwErTY3jYMlEWItOPVTlFJnqHH3+jgJK297hCYXI5qh8/MLkYXMb28D08/wVwDQMEcrDNtdu/wEb+EM9vgAAAA==[0m[Pipeline] // withEnv
+[8mha:////4Jc3HnbpNTOpv8O+DMdatQIxC36waC8VXcOAGyvMcDK6AAAApB+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPMJRGhpERWu54QUmMcaOdWfsC0nFi/gaf8AiEhVbrHa2mdcb1jnBkZIV3uDgMHdOxDDassREabgGmoSni+gIMwUjlJkU9ea0oCI2sKSqYSVhY7ALlB1ahq30+qGboNE2Z07lO0ioXX+HJ1SymFkn/sKcYHcb+0z48/wVwBwjQ71vS7XtBwR6Fm++AAAA[0m[Pipeline] }
+[8mha:////4Fra1htNd8Tev05D6H6R+F5bW2Nj9GBJE81YT3gXJWCJAAAApR+LCAAAAAAAAP9tjTEOwjAQBC9BFLSUPOICFDQoFa3lhheYxBgn1l2wHZyKF/E1/oBFJCq2WO1sM683LIOHmr3BTlNvKTQWBzeavDCx76+OE3Z8wYYpsNModZLc6tOMkqOGOUUJCwErTY3jYMlEWItOPVTlFJnqHH3+jgJK297hCYXI5qh8/MLkYXMb28D08/wVwDQMEcrDPtdu+wE8OIWevgAAAA==[0m[Pipeline] // withEnv
+[8mha:////4JPDi1RUsZSZikv4Q3HQLmY/dAkOgtf7XASRoHKv6YVvAAAAox+LCAAAAAAAAP9tjTEOwjAQBDdBFLSUPMIpQDSIitZKwwtMYowT6y7YF5KKF/E1/kBEJCq22plmXm8sU8SRo1ONpdZTqrzqQu+mpwaO7TXwoBq+qIopcbCqtEPJtT3NWLJYzMtyLDRWlqrAyZMTrHVjHqYIhlxxlji5g0bu6zueyPRUFhPlC2PE5tbXienX+RvA2HWCfL8VZLsP7WHgiL0AAAA=[0m[Pipeline] }
+[8mha:////4HYB7GRXZkRuVmemhi81eRUMI/C1sr4C2qO7MJ6aAEKcAAAAox+LCAAAAAAAAP9tjTEOwjAQBDdBFLSUPMIpQDSIitZKwwtMYowT6y7YF5KKF/E1/kBEJCq22plmXm8sU8SRo1ONpdZTqrzqQu+mpwaO7TXwoBq+qIopcbCqtEPJtT3NWLJYzMtyLDRWlqrAyZMTrHVjHqYIhlxxlji5g0bu6zueyPRUFhPlC2PE5tbXienX+RvA2HWCfL8TZNsPXiikpL0AAAA=[0m[Pipeline] // node
+[8mha:////4Ii/wt/MbzX5t4wffT33YH6+fY1C6i3sqkk1v5iVzddLAAAApB+LCAAAAAAAAP9tjTEOwjAQBDdBFLSUPMKRkKBBVLRWGl5gEmOcWHfBvpBUvIiv8QciIlGx1c4083pjmSKOHJ1qLLWeUuVVF3o3PTVwbK+BB9XwRVVMiYNVpR1Kru1pxpLFYl6WY6GxslQFTp6cYK0b8zBFMOSKs8TJHTRyX9/xRKanspgoXxgjNre+Tky/zt8Axq4T5PudINt+AHgxw+69AAAA[0m[Pipeline] End of Pipeline
+ERROR: [DEPLOY] Ansible reported one or more FAILED tasks — see log above for details.
+Finished: FAILURE
