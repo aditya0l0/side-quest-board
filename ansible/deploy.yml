@@ -216,6 +216,17 @@
       register: nginx_test
       failed_when: nginx_test.rc != 0
 
+    # Reload Nginx unconditionally after every deploy.
+    # The 'reload nginx' handler only fires when a task notifies it (i.e. when
+    # the config *changes*). On subsequent deploys where the Nginx config is
+    # already up-to-date, the handler is never triggered — leaving Nginx with
+    # stale upstream state after containers are recreated. This explicit reload
+    # fixes the intermittent /health 404 failure.
+    - name: Reload Nginx to apply current config and refresh upstream connections
+      service:
+        name:  nginx
+        state: reloaded
+
     # ── Health Checks ─────────────────────────────────────────────────────────
     - name: Wait for backend Spring Boot API to become healthy
       uri:
@@ -228,16 +239,32 @@
       delay:      10
       until:      api_health.status in [200, 404]
 
-    - name: Wait for frontend to become reachable through Nginx
+    # Probe the frontend container directly on its host port first.
+    # This separates "is the container up?" from "is Nginx proxying correctly?"
+    # and gives faster, clearer failure messages.
+    - name: Wait for frontend container to become reachable (direct port check)
+      uri:
+        url:            "http://127.0.0.1:{{ frontend_port }}/"
+        method:         GET
+        status_code:    200
+        return_content: no
+      register:   frontend_direct
+      retries:    6
+      delay:      5
+      until:      frontend_direct.status == 200
+
+    # Confirm the Nginx /health stub responds correctly.
+    # This validates that Nginx is running and the site config is loaded.
+    - name: Confirm Nginx health endpoint is reachable (proxy layer check)
       uri:
         url:            "http://127.0.0.1/health"
         method:         GET
         status_code:    200
         return_content: no
-      register:   frontend_health
-      retries:    6
-      delay:      5
-      until:      frontend_health.status == 200
+      register:   nginx_health
+      retries:    3
+      delay:      3
+      until:      nginx_health.status == 200
 
     # ── Cleanup ───────────────────────────────────────────────────────────────
     - name: Remove dangling Docker images to free disk space
