@@ -8,4 +8,15 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
   },
+  // Dev server proxy: mirrors Nginx's /api → backend routing.
+  // This allows questApi.js to use a relative '/api' baseURL in both
+  // local dev and production without any environment-specific config.
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+    },
+  },
 })

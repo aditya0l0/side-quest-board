@@ -1,7 +1,10 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:8080/api',
+  // Relative URL — works in both dev (Vite dev server) and production (Nginx proxy).
+  // DO NOT use 'http://localhost:8080/api' — in production, the browser resolves
+  // localhost to the visitor's own machine, not the EC2 server.
+  baseURL: '/api',
   headers: {
     'Content-Type': 'application/json',
   },
