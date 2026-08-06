@@ -268,7 +268,7 @@ Deploys the images built in the previous stage to an EC2 instance via Ansible.
 - **Timeout:** 20 minutes (accounts for Docker install + image pulls + MySQL + Spring Boot cold start)
 - **Worker image:** `cytopia/ansible:latest-tools` (Ansible, OpenSSH, and `community.docker` collection pre-baked)
 - **Ansible config:** `ansible/ansible.cfg`; playbook: `ansible/deploy.yml`
-- **EC2 target:** controlled by the `EC2_HOST` parameter (default: `16.171.42.228`)
+- **EC2 target:** controlled by the `EC2_HOST` parameter (default: `16.171.34.41`)
 - **Silent-failure guards:** the log is captured and grepped for three Ansible failure signatures even when exit code is 0:
   - `skipping: no hosts matched` → inventory parse error
   - `UNREACHABLE` → SSH / network failure
