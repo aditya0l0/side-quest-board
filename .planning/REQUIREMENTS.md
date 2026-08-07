@@ -25,4 +25,8 @@
 
 ## Traceability
 
-*(To be populated by the roadmap)*
+- **PROV-01**: Phase 1: State Management
+- **PROV-02**: Phase 2: Core Provisioning
+- **PROV-03**: Phase 2: Core Provisioning
+- **CICD-01**: Phase 3: CI/CD Integration
+- **CICD-02**: Phase 3: CI/CD Integration
