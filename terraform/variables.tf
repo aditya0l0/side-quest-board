@@ -33,9 +33,9 @@ variable "ami_id" {
       the Packer-output AMI ID. Jenkinsfile.infra handles this automatically.
   EOT
   type    = string
-  # Ubuntu 22.04 LTS (Jammy) — eu-north-1 — as of 2026-08
+  # Current running AMI on the imported instance (discovered via AWS CLI 2026-08-11).
   # Update to your Packer-baked AMI after the first bake run.
-  default = "ami-0989fb15ce71ba39e"
+  default = "ami-0aba19e56f3eaec05"
 }
 
 variable "key_name" {
@@ -45,8 +45,7 @@ variable "key_name" {
     The matching public key must already exist in AWS (created via Console or CLI).
   EOT
   type = string
-  # Change this to the actual key pair name in your AWS account.
-  default = "sidequest-key"
+  default = "ec2-key"
 }
 
 variable "app_name" {

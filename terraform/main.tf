@@ -87,6 +87,24 @@ resource "aws_security_group" "sidequest" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Port 8080 — Jenkins / Spring Boot direct access (matches existing SG rule)
+  ingress {
+    description = "Jenkins / Spring Boot API"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Port 8443 — Jenkins HTTPS / Spring Boot HTTPS (matches existing SG rule)
+  ingress {
+    description = "Jenkins HTTPS / Spring Boot HTTPS"
+    from_port   = 8443
+    to_port     = 8443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   # All outbound traffic allowed (Docker pulls, apt updates, etc.)
   egress {
     from_port   = 0
@@ -100,8 +118,11 @@ resource "aws_security_group" "sidequest" {
   }
 
   lifecycle {
-    # Prevent accidental destruction of the security group if referenced by other resources
     create_before_destroy = true
+    # Ignore description changes — the imported SG has a different description
+    # ("launch-wizard-1 created ...") and changing it forces recreation.
+    # We preserve the existing SG ID to avoid disrupting the running instance.
+    ignore_changes = [description, name]
   }
 }
 
@@ -113,11 +134,11 @@ resource "aws_instance" "sidequest" {
 
   vpc_security_group_ids = [aws_security_group.sidequest.id]
 
-  # Root volume: 20 GiB gp3 (free-tier allows up to 30 GiB EBS storage)
+  # Root volume: 16 GiB gp3 (matches existing imported instance; free-tier allows up to 30 GiB EBS)
   # ⚠️  NOTE: t3.small is NOT free-tier eligible (~$0.0208/hr in eu-north-1).
   root_block_device {
     volume_type           = "gp3"
-    volume_size           = 20
+    volume_size           = 16
     delete_on_termination = true
     encrypted             = false
   }

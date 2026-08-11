@@ -14,13 +14,13 @@ aws_region = "eu-north-1"
 # ── EC2 Key Pair ──────────────────────────────────────────────────────────────
 # The name of the EC2 Key Pair as it appears in the AWS Console.
 # The private key (.pem) must be stored in Jenkins as the 'ec2-ssh-key' credential.
-key_name = "sidequest-key"
+key_name = "ec2-key"
 
 # ── AMI ID ────────────────────────────────────────────────────────────────────
 # On first run: use the base Ubuntu 22.04 LTS AMI for eu-north-1.
 # After Packer bakes a golden image: replace with the Packer output AMI ID.
 # Jenkinsfile.infra updates this automatically after each bake.
-ami_id = "ami-0989fb15ce71ba39e"
+ami_id = "ami-0aba19e56f3eaec05"
 
 # ── Instance Type ─────────────────────────────────────────────────────────────
 # ⚠️  t3.small is NOT free-tier eligible (~$0.0208/hr in eu-north-1).
