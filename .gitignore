@@ -13,21 +13,15 @@ AGENTS.md
 PROGRESS.md
 
 # ── Terraform ──────────────────────────────────────────────────────────────────
-# Provider plugins downloaded by `terraform init` (large binaries)
+# Provider plugins downloaded by `terraform init` (600MB+ binaries — exceeds GitHub 100MB limit)
 terraform/.terraform/
-terraform/.terraform.lock.hcl
 
-# Local state file — contains resource IDs and sensitive output values
+# Local state files — contain sensitive credentials and resource IDs
 terraform/terraform.tfstate
 terraform/terraform.tfstate.backup
 
-# Plan binaries produced by `terraform plan -out`
+# Plan output binaries
 terraform/tfplan-*.bin
-
-# tfvars may contain secrets (key names, region hints) — use tfvars.example instead
-# EXCEPTION: terraform.tfvars is committed by Jenkinsfile.infra (contains only
-# non-secret values: ami_id, region, instance_type) — remove from ignore if desired.
-terraform/terraform.tfvars
 
 # ── Packer ─────────────────────────────────────────────────────────────────────
 # Local plugin cache created by `packer init`

@@ -1,0 +1,33 @@
+# terraform.tfvars.example
+#
+# Copy this file to terraform.tfvars and fill in your real values.
+# terraform.tfvars is git-ignored and must NEVER be committed.
+#
+# Usage:
+#   cp terraform/terraform.tfvars.example terraform/terraform.tfvars
+#   # Edit terraform/terraform.tfvars with your values
+#   terraform apply
+
+# ── AWS Region ────────────────────────────────────────────────────────────────
+aws_region = "eu-north-1"
+
+# ── EC2 Key Pair ──────────────────────────────────────────────────────────────
+# The name of the EC2 Key Pair as it appears in the AWS Console.
+# The private key (.pem) must be stored in Jenkins as the 'ec2-ssh-key' credential.
+key_name = "ec2-key"
+
+# ── AMI ID ────────────────────────────────────────────────────────────────────
+# On first run: use the base Ubuntu 22.04 LTS AMI for eu-north-1.
+# After Packer bakes a golden image: replace with the Packer output AMI ID.
+# Jenkinsfile.infra updates this automatically after each bake.
+ami_id = "ami-0aba19e56f3eaec05"
+
+# ── Instance Type ─────────────────────────────────────────────────────────────
+# ⚠️  t3.small is NOT free-tier eligible (~$0.0208/hr in eu-north-1).
+# Free Tier only covers t2.micro (750 hrs/month). Monitor AWS billing carefully.
+instance_type = "t3.small"
+
+# ── SSH Access ────────────────────────────────────────────────────────────────
+# Restrict SSH to specific CIDRs for better security.
+# Default allows all (0.0.0.0/0) to match the existing setup.
+ssh_allowed_cidr = ["0.0.0.0/0"]
