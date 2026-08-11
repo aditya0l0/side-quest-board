@@ -58,7 +58,7 @@ provider "aws" {
 # ── Security Group ────────────────────────────────────────────────────────────
 resource "aws_security_group" "sidequest" {
   name        = "${var.app_name}-sg"
-  description = "Side-Quest Board — allow SSH, HTTP, and HTTPS inbound; all outbound"
+  description = "Side-Quest Board - allow SSH, HTTP, and HTTPS inbound; all outbound"
 
   # SSH — restricted to var.ssh_allowed_cidr (default: open for Jenkins agent access)
   ingress {
