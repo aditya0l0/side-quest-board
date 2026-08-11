@@ -120,8 +120,8 @@ pipeline {
                     sh """
                         docker run --rm \\
                             --name tf-init-${BUILD_NUMBER} \\
-                            -v ${WORKSPACE}/${TF_DIR}:/workspace \\
-                            -w /workspace \\
+                            --volumes-from jenkins \\
+                            -w ${WORKSPACE}/${TF_DIR} \\
                             -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
@@ -130,8 +130,8 @@ pipeline {
 
                         docker run --rm \\
                             --name tf-validate-${BUILD_NUMBER} \\
-                            -v ${WORKSPACE}/${TF_DIR}:/workspace \\
-                            -w /workspace \\
+                            --volumes-from jenkins \\
+                            -w ${WORKSPACE}/${TF_DIR} \\
                             -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
@@ -157,8 +157,8 @@ pipeline {
                     sh """
                         docker run --rm \\
                             --name tf-plan-${BUILD_NUMBER} \\
-                            -v ${WORKSPACE}/${TF_DIR}:/workspace \\
-                            -w /workspace \\
+                            --volumes-from jenkins \\
+                            -w ${WORKSPACE}/${TF_DIR} \\
                             -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
@@ -166,7 +166,7 @@ pipeline {
                             plan \\
                                 -var "aws_region=${params.AWS_REGION}" \\
                                 -var "instance_type=${INSTANCE_TYPE}" \\
-                                -out=/workspace/tfplan-${BUILD_NUMBER}.bin \\
+                                -out=tfplan-${BUILD_NUMBER}.bin \\
                                 -input=false
                     """
                 }
@@ -191,8 +191,8 @@ pipeline {
                     sh """
                         docker run --rm \\
                             --name tf-apply-${BUILD_NUMBER} \\
-                            -v ${WORKSPACE}/${TF_DIR}:/workspace \\
-                            -w /workspace \\
+                            --volumes-from jenkins \\
+                            -w ${WORKSPACE}/${TF_DIR} \\
                             -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
@@ -209,8 +209,8 @@ pipeline {
                     sh """
                         docker run --rm \\
                             --name tf-output-${BUILD_NUMBER} \\
-                            -v ${WORKSPACE}/${TF_DIR}:/workspace \\
-                            -w /workspace \\
+                            --volumes-from jenkins \\
+                            -w ${WORKSPACE}/${TF_DIR} \\
                             -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
@@ -229,8 +229,8 @@ pipeline {
                             returnStdout: true,
                             script: """
                                 docker run --rm \\
-                                    -v ${WORKSPACE}/${TF_DIR}:/workspace \\
-                                    -w /workspace \\
+                                    --volumes-from jenkins \\
+                                    -w ${WORKSPACE}/${TF_DIR} \\
                                     -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                                     -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                                     -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
@@ -243,8 +243,8 @@ pipeline {
                             returnStdout: true,
                             script: """
                                 docker run --rm \\
-                                    -v ${WORKSPACE}/${TF_DIR}:/workspace \\
-                                    -w /workspace \\
+                                    --volumes-from jenkins \\
+                                    -w ${WORKSPACE}/${TF_DIR} \\
                                     -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                                     -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                                     -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
@@ -385,16 +385,16 @@ pipeline {
                         echo ">>> Initialising Packer plugins..."
                         docker run --rm \\
                             --name packer-init-${BUILD_NUMBER} \\
-                            -v ${WORKSPACE}:/workspace \\
-                            -w /workspace/${PACKER_DIR} \\
+                            --volumes-from jenkins \\
+                            -w ${WORKSPACE}/${PACKER_DIR} \\
                             hashicorp/packer:1.11 \\
                             init .
 
                         echo ">>> Validating Packer template..."
                         docker run --rm \\
                             --name packer-validate-${BUILD_NUMBER} \\
-                            -v ${WORKSPACE}:/workspace \\
-                            -w /workspace/${PACKER_DIR} \\
+                            --volumes-from jenkins \\
+                            -w ${WORKSPACE}/${PACKER_DIR} \\
                             -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
@@ -408,8 +408,8 @@ pipeline {
                         echo ">>> Building golden AMI..."
                         docker run --rm \\
                             --name packer-build-${BUILD_NUMBER} \\
-                            -v ${WORKSPACE}:/workspace \\
-                            -w /workspace/${PACKER_DIR} \\
+                            --volumes-from jenkins \\
+                            -w ${WORKSPACE}/${PACKER_DIR} \\
                             -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
@@ -467,8 +467,8 @@ print(m['builds'][-1]['artifact_id'].split(':')[1])
                         echo "=== [INFRA] Re-launching instance from golden AMI: ${env.NEW_AMI_ID} ==="
                         docker run --rm \\
                             --name tf-golden-${BUILD_NUMBER} \\
-                            -v ${WORKSPACE}/${TF_DIR}:/workspace \\
-                            -w /workspace \\
+                            --volumes-from jenkins \\
+                            -w ${WORKSPACE}/${TF_DIR} \\
                             -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
@@ -491,8 +491,8 @@ print(m['builds'][-1]['artifact_id'].split(':')[1])
                                 returnStdout: true,
                                 script: """
                                     docker run --rm \\
-                                        -v ${WORKSPACE}/${TF_DIR}:/workspace \\
-                                        -w /workspace \\
+                                        --volumes-from jenkins \\
+                                        -w ${WORKSPACE}/${TF_DIR} \\
                                         -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                                         -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                                         -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
