@@ -148,17 +148,18 @@ pipeline {
                     sh """
                         docker run --rm \\
                             --name tf-plan-${BUILD_NUMBER} \\
+                            --entrypoint sh \\
                             -v ${WORKSPACE}/${TF_DIR}:/workspace \\
                             -w /workspace \\
                             -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
                             hashicorp/terraform:1.9 \\
-                            terraform plan \\
-                                -var "aws_region=${params.AWS_REGION}" \\
-                                -var "instance_type=${INSTANCE_TYPE}" \\
+                            -c "terraform plan \\
+                                -var 'aws_region=${params.AWS_REGION}' \\
+                                -var 'instance_type=${INSTANCE_TYPE}' \\
                                 -out=/workspace/tfplan-${BUILD_NUMBER}.bin \\
-                                -input=false
+                                -input=false"
                     """
                 }
                 // Archive the plan binary for audit trail
@@ -182,17 +183,18 @@ pipeline {
                     sh """
                         docker run --rm \\
                             --name tf-apply-${BUILD_NUMBER} \\
+                            --entrypoint sh \\
                             -v ${WORKSPACE}/${TF_DIR}:/workspace \\
                             -w /workspace \\
                             -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
                             hashicorp/terraform:1.9 \\
-                            terraform apply \\
-                                -var "aws_region=${params.AWS_REGION}" \\
-                                -var "instance_type=${INSTANCE_TYPE}" \\
+                            -c "terraform apply \\
+                                -var 'aws_region=${params.AWS_REGION}' \\
+                                -var 'instance_type=${INSTANCE_TYPE}' \\
                                 -auto-approve \\
-                                -input=false
+                                -input=false"
                     """
 
                     // Extract the EC2 public IP from Terraform output
@@ -200,13 +202,14 @@ pipeline {
                     sh """
                         docker run --rm \\
                             --name tf-output-${BUILD_NUMBER} \\
+                            --entrypoint sh \\
                             -v ${WORKSPACE}/${TF_DIR}:/workspace \\
                             -w /workspace \\
                             -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
                             hashicorp/terraform:1.9 \\
-                            terraform output -raw ec2_public_ip > /dev/null
+                            -c "terraform output -raw ec2_public_ip" > /dev/null
                     """
                 }
 
@@ -220,13 +223,14 @@ pipeline {
                             returnStdout: true,
                             script: """
                                 docker run --rm \\
+                                    --entrypoint sh \\
                                     -v ${WORKSPACE}/${TF_DIR}:/workspace \\
                                     -w /workspace \\
                                     -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                                     -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                                     -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
                                     hashicorp/terraform:1.9 \\
-                                    terraform output -raw ec2_public_ip
+                                    -c "terraform output -raw ec2_public_ip"
                             """
                         ).trim()
 
@@ -234,13 +238,14 @@ pipeline {
                             returnStdout: true,
                             script: """
                                 docker run --rm \\
+                                    --entrypoint sh \\
                                     -v ${WORKSPACE}/${TF_DIR}:/workspace \\
                                     -w /workspace \\
                                     -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                                     -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                                     -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
                                     hashicorp/terraform:1.9 \\
-                                    terraform output -raw ec2_instance_id
+                                    -c "terraform output -raw ec2_instance_id"
                             """
                         ).trim()
                     }
@@ -448,18 +453,19 @@ print(m['builds'][-1]['artifact_id'].split(':')[1])
                         echo "=== [INFRA] Re-launching instance from golden AMI: ${env.NEW_AMI_ID} ==="
                         docker run --rm \\
                             --name tf-golden-${BUILD_NUMBER} \\
+                            --entrypoint sh \\
                             -v ${WORKSPACE}/${TF_DIR}:/workspace \\
                             -w /workspace \\
                             -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
                             hashicorp/terraform:1.9 \\
-                            terraform apply \\
-                                -var "aws_region=${params.AWS_REGION}" \\
-                                -var "instance_type=${INSTANCE_TYPE}" \\
-                                -var "ami_id=${env.NEW_AMI_ID}" \\
+                            -c "terraform apply \\
+                                -var 'aws_region=${params.AWS_REGION}' \\
+                                -var 'instance_type=${INSTANCE_TYPE}' \\
+                                -var 'ami_id=${env.NEW_AMI_ID}' \\
                                 -auto-approve \\
-                                -input=false
+                                -input=false"
                     """
 
                     // Capture the new EC2 IP (EIP is re-associated — should be the same)
@@ -472,13 +478,14 @@ print(m['builds'][-1]['artifact_id'].split(':')[1])
                                 returnStdout: true,
                                 script: """
                                     docker run --rm \\
+                                        --entrypoint sh \\
                                         -v ${WORKSPACE}/${TF_DIR}:/workspace \\
                                         -w /workspace \\
                                         -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                                         -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                                         -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
                                         hashicorp/terraform:1.9 \\
-                                        terraform output -raw ec2_public_ip
+                                        -c "terraform output -raw ec2_public_ip"
                                 """
                             ).trim()
                         }
