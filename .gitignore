@@ -11,3 +11,27 @@ webhook-server/.env
 # Agent tracking & context files
 AGENTS.md
 PROGRESS.md
+
+# ── Terraform ──────────────────────────────────────────────────────────────────
+# Provider plugins downloaded by `terraform init` (large binaries)
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+
+# Local state file — contains resource IDs and sensitive output values
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+
+# Plan binaries produced by `terraform plan -out`
+terraform/tfplan-*.bin
+
+# tfvars may contain secrets (key names, region hints) — use tfvars.example instead
+# EXCEPTION: terraform.tfvars is committed by Jenkinsfile.infra (contains only
+# non-secret values: ami_id, region, instance_type) — remove from ignore if desired.
+terraform/terraform.tfvars
+
+# ── Packer ─────────────────────────────────────────────────────────────────────
+# Local plugin cache created by `packer init`
+packer/packer_cache/
+
+# Manifest written after each bake (changes every run; AMI ID committed to tfvars instead)
+packer/manifest.json

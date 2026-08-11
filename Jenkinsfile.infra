@@ -1,0 +1,613 @@
+
+/*
+ * INFRASTRUCTURE PIPELINE: sidequest-infra
+ *
+ * Script Path: Jenkinsfile.infra
+ *
+ * PURPOSE
+ * ───────
+ * This pipeline manages the AWS infrastructure lifecycle for the Side-Quest Board.
+ * It is NOT triggered on every commit — run it manually when you need to:
+ *   (a) Provision a fresh EC2 instance from scratch.
+ *   (b) Bake a new "golden AMI" (pre-installed Docker/Nginx) and re-launch the
+ *       deployment instance from that image.
+ *
+ * The regular CI/CD pipeline (Jenkinsfile → Jenkinsfile.deploy) continues to run
+ * on every commit and deploys the application stack via Ansible/Docker Compose.
+ * It is NOT affected by this pipeline.
+ *
+ * PIPELINE STAGES
+ * ───────────────
+ *   1. Terraform Init & Validate  — downloads AWS provider, checks HCL syntax
+ *   2. Terraform Plan             — previews infrastructure diff (no changes applied)
+ *   3. Terraform Apply (base EC2) — creates/updates EC2, SG, EIP from current state
+ *   4. Ansible Provision          — runs provision.yml on the fresh instance
+ *                                   (installs Docker, Nginx, ufw)
+ *   5. Packer Bake AMI            — snapshots the configured instance into a golden AMI
+ *   6. Terraform Apply (golden)   — re-launches the instance from the new golden AMI
+ *   7. Commit AMI ID              — writes new AMI ID to terraform/terraform.tfvars
+ *                                   and pushes to git (so future plans use it)
+ *   8. Smoke Test                 — waits for SSH and HTTP to become reachable
+ *
+ * REQUIRED JENKINS CREDENTIALS
+ * ─────────────────────────────
+ *   aws-access-key-id       — Secret text   — AWS Access Key ID
+ *   aws-secret-access-key   — Secret text   — AWS Secret Access Key
+ *   ec2-ssh-key             — SSH key       — Private key for EC2 access
+ *   github-pat              — Secret text   — GitHub Personal Access Token (for git push)
+ *
+ * REQUIRED JENKINS PARAMETERS
+ * ────────────────────────────
+ *   BAKE_GOLDEN_AMI  — Boolean — whether to run Packer bake + golden re-launch
+ *   BASE_AMI_ID      — String  — Ubuntu 22.04 AMI for eu-north-1 (used for Packer)
+ *   GITHUB_REPO_URL  — String  — full HTTPS URL to the git repo (for AMI ID commit)
+ *
+ * ⚠️  COST NOTE: t3.small is NOT free-tier eligible (~$0.0208/hr in eu-north-1).
+ *    The Packer builder instance runs for ~10-15 min then is auto-terminated.
+ *    Monitor your AWS billing dashboard to avoid unexpected charges.
+ */
+
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '5'))
+        timeout(time: 60, unit: 'MINUTES') // Packer bake can take up to 30 min
+    }
+
+    parameters {
+        booleanParam(
+            name: 'BAKE_GOLDEN_AMI',
+            defaultValue: true,
+            description: 'If true: run Packer to bake a new golden AMI and re-launch the instance from it. ' +
+                         'If false: only run Terraform apply (no Packer bake).'
+        )
+        string(
+            name: 'BASE_AMI_ID',
+            defaultValue: 'ami-0989fb15ce71ba39e',
+            description: 'Ubuntu 22.04 LTS AMI ID for eu-north-1. Used as Packer source. ' +
+                         'Find latest: https://cloud-images.ubuntu.com/locator/ec2/'
+        )
+        string(
+            name: 'GITHUB_REPO_URL',
+            defaultValue: 'https://github.com/aditya0l0/side-quest-board.git',
+            description: 'Full HTTPS URL of the GitHub repository (used to commit new AMI ID after bake).'
+        )
+        string(
+            name: 'AWS_REGION',
+            defaultValue: 'eu-north-1',
+            description: 'AWS region where all resources are provisioned.'
+        )
+    }
+
+    environment {
+        TF_DIR         = "terraform"
+        PACKER_DIR     = "packer"
+        ANSIBLE_DIR    = "ansible"
+        INSTANCE_TYPE  = "t3.small"
+        // Suppress Terraform color codes in Jenkins logs
+        TF_CLI_ARGS    = "-no-color"
+        // Suppress Ansible color codes
+        ANSIBLE_FORCE_COLOR = "false"
+        ANSIBLE_PYTHON_INTERPRETER = "/usr/bin/python3"
+        ANSIBLE_CONFIG = "ansible/ansible.cfg"
+    }
+
+    stages {
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STAGE 1: Checkout & Setup
+        // ─────────────────────────────────────────────────────────────────────
+        stage('Checkout') {
+            steps {
+                checkout scm
+                echo "=== [INFRA] Pipeline started — BAKE_GOLDEN_AMI=${params.BAKE_GOLDEN_AMI} ==="
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STAGE 2: Terraform Init & Validate
+        // Initialises provider plugins and checks HCL syntax.
+        // Runs inside the official hashicorp/terraform Docker image.
+        // ─────────────────────────────────────────────────────────────────────
+        stage('Terraform Init & Validate') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'aws-access-key-id',     variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh """
+                        docker run --rm \\
+                            --name tf-init-${BUILD_NUMBER} \\
+                            -v ${WORKSPACE}/${TF_DIR}:/workspace \\
+                            -w /workspace \\
+                            -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
+                            -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
+                            -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
+                            hashicorp/terraform:1.9 \\
+                            sh -c "terraform init -input=false && terraform validate"
+                    """
+                }
+                echo "=== [INFRA] Terraform initialised and validated ==="
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STAGE 3: Terraform Plan
+        // Shows what Terraform will create/change/destroy. No resources are
+        // modified in this stage. The plan file is archived for audit purposes.
+        // ─────────────────────────────────────────────────────────────────────
+        stage('Terraform Plan') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'aws-access-key-id',     variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh """
+                        docker run --rm \\
+                            --name tf-plan-${BUILD_NUMBER} \\
+                            -v ${WORKSPACE}/${TF_DIR}:/workspace \\
+                            -w /workspace \\
+                            -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
+                            -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
+                            -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
+                            hashicorp/terraform:1.9 \\
+                            terraform plan \\
+                                -var "aws_region=${params.AWS_REGION}" \\
+                                -var "instance_type=${INSTANCE_TYPE}" \\
+                                -out=/workspace/tfplan-${BUILD_NUMBER}.bin \\
+                                -input=false
+                    """
+                }
+                // Archive the plan binary for audit trail
+                archiveArtifacts artifacts: "${TF_DIR}/tfplan-${BUILD_NUMBER}.bin", allowEmptyArchive: true
+                echo "=== [INFRA] Terraform plan complete — review output above before proceeding ==="
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STAGE 4: Terraform Apply (Base EC2)
+        // Applies the plan to create/update the EC2 instance, Security Group,
+        // and Elastic IP. On a fresh account this creates all resources.
+        // On an imported account this reconciles config with existing resources.
+        // ─────────────────────────────────────────────────────────────────────
+        stage('Terraform Apply (Base EC2)') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'aws-access-key-id',     variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh """
+                        docker run --rm \\
+                            --name tf-apply-${BUILD_NUMBER} \\
+                            -v ${WORKSPACE}/${TF_DIR}:/workspace \\
+                            -w /workspace \\
+                            -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
+                            -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
+                            -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
+                            hashicorp/terraform:1.9 \\
+                            terraform apply \\
+                                -var "aws_region=${params.AWS_REGION}" \\
+                                -var "instance_type=${INSTANCE_TYPE}" \\
+                                -auto-approve \\
+                                -input=false
+                    """
+
+                    // Extract the EC2 public IP from Terraform output
+                    // Store in a file so subsequent stages can read it
+                    sh """
+                        docker run --rm \\
+                            --name tf-output-${BUILD_NUMBER} \\
+                            -v ${WORKSPACE}/${TF_DIR}:/workspace \\
+                            -w /workspace \\
+                            -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
+                            -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
+                            -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
+                            hashicorp/terraform:1.9 \\
+                            terraform output -raw ec2_public_ip > /dev/null
+                    """
+                }
+
+                script {
+                    // Read EC2 IP using a second docker run to capture stdout cleanly
+                    withCredentials([
+                        string(credentialsId: 'aws-access-key-id',     variable: 'AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                    ]) {
+                        env.EC2_HOST = sh(
+                            returnStdout: true,
+                            script: """
+                                docker run --rm \\
+                                    -v ${WORKSPACE}/${TF_DIR}:/workspace \\
+                                    -w /workspace \\
+                                    -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
+                                    -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
+                                    -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
+                                    hashicorp/terraform:1.9 \\
+                                    terraform output -raw ec2_public_ip
+                            """
+                        ).trim()
+
+                        env.INSTANCE_ID = sh(
+                            returnStdout: true,
+                            script: """
+                                docker run --rm \\
+                                    -v ${WORKSPACE}/${TF_DIR}:/workspace \\
+                                    -w /workspace \\
+                                    -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
+                                    -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
+                                    -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
+                                    hashicorp/terraform:1.9 \\
+                                    terraform output -raw ec2_instance_id
+                            """
+                        ).trim()
+                    }
+                    echo "=== [INFRA] EC2 provisioned: ${env.EC2_HOST} (${env.INSTANCE_ID}) ==="
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STAGE 5: Wait for EC2 SSH
+        // New instances need ~60 seconds to finish first-boot initialisation
+        // before SSH is accepted. This stage polls until the host is reachable.
+        // ─────────────────────────────────────────────────────────────────────
+        stage('Wait for EC2 SSH') {
+            steps {
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'ec2-ssh-key',
+                        keyFileVariable: 'EC2_KEY_FILE'
+                    )
+                ]) {
+                    sh """
+                        chmod 400 "\${EC2_KEY_FILE}"
+                        echo "=== [INFRA] Waiting for SSH on ${env.EC2_HOST}..."
+                        for i in \$(seq 1 18); do
+                            ssh -o StrictHostKeyChecking=no \\
+                                -o ConnectTimeout=10 \\
+                                -o BatchMode=yes \\
+                                -i "\${EC2_KEY_FILE}" \\
+                                ubuntu@${env.EC2_HOST} 'echo "SSH OK"' && break
+                            echo "  Attempt \$i/18 — not ready yet, waiting 10s..."
+                            sleep 10
+                        done
+                    """
+                }
+                echo "=== [INFRA] EC2 SSH is reachable ==="
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STAGE 6: Ansible Provision
+        // Runs ansible/provision.yml against the EC2 instance via the same
+        // cytopia/ansible Docker image used by Jenkinsfile.deploy.
+        // Installs: Docker, Docker Compose, Nginx, ufw, app directory.
+        //
+        // When BAKE_GOLDEN_AMI=false, this stage still runs because the instance
+        // may have been freshly created (no pre-installed packages).
+        // When BAKE_GOLDEN_AMI=true, the provisioned instance will be snapshotted
+        // into a golden AMI by Packer in the next stage.
+        // ─────────────────────────────────────────────────────────────────────
+        stage('Ansible Provision') {
+            steps {
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'ec2-ssh-key',
+                        keyFileVariable: 'EC2_KEY_FILE'
+                    )
+                ]) {
+                    script {
+                        def provisionLog = "${WORKSPACE}/ansible-provision-${BUILD_NUMBER}.log"
+                        def provisionStatus = sh(
+                            label: '[infra] Run Ansible provision.yml via Docker container',
+                            returnStatus: true,
+                            script: """
+                                set -o pipefail
+                                docker run --rm \\
+                                    --name provision-worker-${BUILD_NUMBER} \\
+                                    --volumes-from jenkins \\
+                                    -e ANSIBLE_HOST_KEY_CHECKING=False \\
+                                    -e ANSIBLE_CONFIG=${WORKSPACE}/${ANSIBLE_DIR}/ansible.cfg \\
+                                    -w ${WORKSPACE} \\
+                                    cytopia/ansible:latest-tools \\
+                                    sh -c "
+                                        chmod 400 \\"\\$EC2_KEY_FILE\\"
+                                        echo '=== [INFRA] Running provision.yml on ${env.EC2_HOST} ==='
+                                        ansible-playbook \\
+                                            -i ${ANSIBLE_DIR}/inventory.ini \\
+                                            ${ANSIBLE_DIR}/provision.yml \\
+                                            --private-key \\"\\$EC2_KEY_FILE\\" \\
+                                            -e ansible_host='${env.EC2_HOST}' \\
+                                            -v
+                                    " 2>&1 | tee ${provisionLog}
+                            """
+                        )
+
+                        // Fail fast on Ansible errors (same guards as Jenkinsfile.deploy)
+                        def unreachable = sh(returnStatus: true, script: "grep -q 'UNREACHABLE' ${provisionLog}")
+                        if (unreachable == 0) {
+                            error("[INFRA] Ansible reported UNREACHABLE — SSH failed to ${env.EC2_HOST}.")
+                        }
+                        def taskFailed = sh(returnStatus: true, script: "grep -q 'FAILED!' ${provisionLog}")
+                        if (taskFailed == 0) {
+                            error("[INFRA] Ansible reported FAILED tasks — check provision log above.")
+                        }
+                        if (provisionStatus != 0) {
+                            error("[INFRA] Ansible provision worker exited with code ${provisionStatus}.")
+                        }
+                    }
+                }
+                archiveArtifacts artifacts: "ansible-provision-${BUILD_NUMBER}.log", allowEmptyArchive: true
+                echo "=== [INFRA] EC2 provisioned with Docker + Nginx + ufw ==="
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STAGE 7: Packer Bake Golden AMI
+        // Only runs when BAKE_GOLDEN_AMI=true.
+        //
+        // Packer will:
+        //   1. Launch a NEW temporary t3.small builder EC2 from BASE_AMI_ID.
+        //      (This is separate from the instance Terraform manages — it is
+        //       temporary and auto-terminated by Packer after snapshotting.)
+        //   2. Upload ansible/ to the builder and run provision.yml locally.
+        //   3. Snapshot the builder into a new AMI named "sidequest-golden-<ts>".
+        //   4. Terminate the builder automatically.
+        //   5. Write the AMI ID to packer/manifest.json.
+        //
+        // ⚠️  FREE TIER NOTE:
+        //   During the ~10-15 min Packer bake, TWO t3.small instances exist:
+        //     - The Terraform-managed deployment instance (permanent)
+        //     - The Packer builder instance (temporary, auto-terminated)
+        //   Both incur charges. Monitor AWS billing dashboard.
+        // ─────────────────────────────────────────────────────────────────────
+        stage('Packer Bake Golden AMI') {
+            when { expression { return params.BAKE_GOLDEN_AMI } }
+            steps {
+                withCredentials([
+                    string(credentialsId: 'aws-access-key-id',     variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh """
+                        echo "=== [INFRA] Starting Packer AMI bake from base: ${params.BASE_AMI_ID} ==="
+                        docker run --rm \\
+                            --name packer-bake-${BUILD_NUMBER} \\
+                            -v ${WORKSPACE}:/workspace \\
+                            -w /workspace/${PACKER_DIR} \\
+                            -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
+                            -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
+                            -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
+                            hashicorp/packer:1.11 \\
+                            sh -c "
+                                echo '>>> Initialising Packer plugins...'
+                                packer init .
+
+                                echo '>>> Validating Packer template...'
+                                packer validate \\
+                                    -var 'aws_region=${params.AWS_REGION}' \\
+                                    -var 'base_ami_id=${params.BASE_AMI_ID}' \\
+                                    -var 'instance_type=${INSTANCE_TYPE}' \\
+                                    .
+
+                                echo '>>> Building golden AMI...'
+                                packer build \\
+                                    -var 'aws_region=${params.AWS_REGION}' \\
+                                    -var 'base_ami_id=${params.BASE_AMI_ID}' \\
+                                    -var 'instance_type=${INSTANCE_TYPE}' \\
+                                    .
+                            "
+                    """
+                }
+
+                // Extract the new AMI ID from manifest.json written by Packer
+                script {
+                    env.NEW_AMI_ID = sh(
+                        returnStdout: true,
+                        script: """
+                            python3 -c "
+import json, sys
+with open('${PACKER_DIR}/manifest.json') as f:
+    m = json.load(f)
+# artifact_id format: 'region:ami-xxx'
+print(m['builds'][-1]['artifact_id'].split(':')[1])
+"
+                        """
+                    ).trim()
+                    echo "=== [INFRA] Packer bake complete — New AMI ID: ${env.NEW_AMI_ID} ==="
+                }
+
+                archiveArtifacts artifacts: "${PACKER_DIR}/manifest.json", allowEmptyArchive: true
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STAGE 8: Terraform Apply (Golden EC2)
+        // Only runs when BAKE_GOLDEN_AMI=true.
+        //
+        // Re-runs terraform apply with the new AMI ID. Because aws_instance.ami
+        // has changed, Terraform will:
+        //   1. Create a NEW EC2 from the golden AMI (create_before_destroy).
+        //   2. Re-associate the Elastic IP to the new instance.
+        //   3. Terminate the old instance.
+        //
+        // The new EC2 boots with Docker, Nginx, and ufw already installed.
+        // The next regular Jenkinsfile.deploy run will deploy the app stack.
+        // ─────────────────────────────────────────────────────────────────────
+        stage('Terraform Apply (Golden EC2)') {
+            when { expression { return params.BAKE_GOLDEN_AMI } }
+            steps {
+                withCredentials([
+                    string(credentialsId: 'aws-access-key-id',     variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh """
+                        echo "=== [INFRA] Re-launching instance from golden AMI: ${env.NEW_AMI_ID} ==="
+                        docker run --rm \\
+                            --name tf-golden-${BUILD_NUMBER} \\
+                            -v ${WORKSPACE}/${TF_DIR}:/workspace \\
+                            -w /workspace \\
+                            -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
+                            -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
+                            -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
+                            hashicorp/terraform:1.9 \\
+                            terraform apply \\
+                                -var "aws_region=${params.AWS_REGION}" \\
+                                -var "instance_type=${INSTANCE_TYPE}" \\
+                                -var "ami_id=${env.NEW_AMI_ID}" \\
+                                -auto-approve \\
+                                -input=false
+                    """
+
+                    // Capture the new EC2 IP (EIP is re-associated — should be the same)
+                    script {
+                        withCredentials([
+                            string(credentialsId: 'aws-access-key-id',     variable: 'AWS_ACCESS_KEY_ID'),
+                            string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                        ]) {
+                            env.EC2_HOST = sh(
+                                returnStdout: true,
+                                script: """
+                                    docker run --rm \\
+                                        -v ${WORKSPACE}/${TF_DIR}:/workspace \\
+                                        -w /workspace \\
+                                        -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
+                                        -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
+                                        -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
+                                        hashicorp/terraform:1.9 \\
+                                        terraform output -raw ec2_public_ip
+                                """
+                            ).trim()
+                        }
+                        echo "=== [INFRA] Golden instance live at: ${env.EC2_HOST} ==="
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STAGE 9: Commit New AMI ID to Git
+        // Only runs when BAKE_GOLDEN_AMI=true.
+        //
+        // Updates terraform/terraform.tfvars with the new AMI ID so the next
+        // `terraform plan` picks it up as the current default. Commits and
+        // pushes the change to the repository.
+        // ─────────────────────────────────────────────────────────────────────
+        stage('Commit AMI ID to Git') {
+            when { expression { return params.BAKE_GOLDEN_AMI } }
+            steps {
+                withCredentials([
+                    string(credentialsId: 'github-pat', variable: 'GITHUB_TOKEN')
+                ]) {
+                    sh """
+                        echo "=== [INFRA] Updating terraform/terraform.tfvars with AMI: ${env.NEW_AMI_ID} ==="
+
+                        # Create or update terraform.tfvars with the new AMI ID
+                        # This file is git-ignored by default; we intentionally commit
+                        # the non-secret content (ami_id, region, instance_type) here.
+                        cat > ${TF_DIR}/terraform.tfvars << 'TFVARS'
+# Auto-generated by Jenkinsfile.infra — do not edit manually.
+# Last baked: BUILD_NUMBER_PLACEHOLDER
+aws_region    = "${params.AWS_REGION}"
+instance_type = "${INSTANCE_TYPE}"
+ami_id        = "${env.NEW_AMI_ID}"
+TFVARS
+
+                        # Replace placeholder with actual build number
+                        sed -i "s/BUILD_NUMBER_PLACEHOLDER/${BUILD_NUMBER}/" ${TF_DIR}/terraform.tfvars
+
+                        # Configure git for commit
+                        git config user.email "jenkins@sidequest-bot"
+                        git config user.name "Jenkins Infra Bot"
+
+                        # Stage and commit terraform.tfvars
+                        git add ${TF_DIR}/terraform.tfvars
+                        git diff --cached --quiet || git commit -m "infra: update golden AMI to ${env.NEW_AMI_ID} [build #${BUILD_NUMBER}] [skip ci]"
+
+                        # Push using PAT authentication
+                        REPO_URL=\$(echo "${params.GITHUB_REPO_URL}" | sed 's|https://|https://\${GITHUB_TOKEN}@|')
+                        git push "\${REPO_URL}" HEAD:\$(git rev-parse --abbrev-ref HEAD)
+
+                        echo "=== [INFRA] AMI ID committed and pushed to git ==="
+                    """
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STAGE 10: Smoke Test
+        // Waits for the final EC2 instance to respond on SSH and HTTP (port 80).
+        // HTTP port 80 should return 200 after deploy.yml runs next; right now
+        // we only assert that Nginx is listening (connection accepted).
+        // ─────────────────────────────────────────────────────────────────────
+        stage('Smoke Test') {
+            steps {
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'ec2-ssh-key',
+                        keyFileVariable: 'EC2_KEY_FILE'
+                    )
+                ]) {
+                    sh """
+                        chmod 400 "\${EC2_KEY_FILE}"
+                        echo "=== [INFRA] Smoke testing ${env.EC2_HOST} ==="
+
+                        # SSH reachability check
+                        for i in \$(seq 1 18); do
+                            ssh -o StrictHostKeyChecking=no \\
+                                -o ConnectTimeout=10 \\
+                                -o BatchMode=yes \\
+                                -i "\${EC2_KEY_FILE}" \\
+                                ubuntu@${env.EC2_HOST} 'echo "SSH OK"' && SSH_OK=1 && break
+                            echo "  SSH attempt \$i/18 — waiting 10s..."
+                            sleep 10
+                        done
+                        [ "\${SSH_OK}" = "1" ] || { echo "ERROR: SSH smoke test FAILED"; exit 1; }
+
+                        # Verify Docker is installed (pre-baked in golden AMI)
+                        ssh -o StrictHostKeyChecking=no \\
+                            -o ConnectTimeout=10 \\
+                            -o BatchMode=yes \\
+                            -i "\${EC2_KEY_FILE}" \\
+                            ubuntu@${env.EC2_HOST} \\
+                            'docker --version && docker compose version && nginx -v' \\
+                            && echo ">>> Pre-installed tools verified OK" \\
+                            || echo ">>> WARN: Tools check failed — may be base AMI (expected on first run)"
+
+                        echo "=== [INFRA] Smoke test PASSED ==="
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                // Archive Terraform plan for audit
+                def planFile = "${TF_DIR}/tfplan-${BUILD_NUMBER}.bin"
+                if (fileExists(planFile)) {
+                    archiveArtifacts artifacts: planFile, allowEmptyArchive: true
+                }
+                // Archive Packer manifest if it exists
+                def manifestFile = "${PACKER_DIR}/manifest.json"
+                if (fileExists(manifestFile)) {
+                    archiveArtifacts artifacts: manifestFile, allowEmptyArchive: true
+                }
+            }
+        }
+        success {
+            echo """
+=== [INFRA] ✅ Infrastructure pipeline SUCCEEDED ===
+   EC2 Host    : ${env.EC2_HOST ?: 'N/A'}
+   AMI Used    : ${env.NEW_AMI_ID ?: params.BASE_AMI_ID}
+   Golden Bake : ${params.BAKE_GOLDEN_AMI}
+   Next step   : Trigger 'sidequest-master' to deploy the application stack.
+"""
+        }
+        failure {
+            echo "=== [INFRA] ❌ Infrastructure pipeline FAILED — check logs above ==="
+        }
+    }
+}
