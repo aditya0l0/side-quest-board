@@ -127,7 +127,7 @@ pipeline {
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
                             hashicorp/terraform:1.9 \\
-                            -c "terraform init -input=false && terraform validate"
+                            -c \"terraform init -input=false && terraform validate\"
                     """
                 }
                 echo "=== [INFRA] Terraform initialised and validated ==="
@@ -155,11 +155,11 @@ pipeline {
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
                             hashicorp/terraform:1.9 \\
-                            -c "terraform plan \\
+                            -c \"terraform plan \\
                                 -var 'aws_region=${params.AWS_REGION}' \\
                                 -var 'instance_type=${INSTANCE_TYPE}' \\
                                 -out=/workspace/tfplan-${BUILD_NUMBER}.bin \\
-                                -input=false"
+                                -input=false\"
                     """
                 }
                 // Archive the plan binary for audit trail
@@ -190,11 +190,11 @@ pipeline {
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
                             hashicorp/terraform:1.9 \\
-                            -c "terraform apply \\
+                            -c \"terraform apply \\
                                 -var 'aws_region=${params.AWS_REGION}' \\
                                 -var 'instance_type=${INSTANCE_TYPE}' \\
                                 -auto-approve \\
-                                -input=false"
+                                -input=false\"
                     """
 
                     // Extract the EC2 public IP from Terraform output
@@ -209,7 +209,7 @@ pipeline {
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
                             hashicorp/terraform:1.9 \\
-                            -c "terraform output -raw ec2_public_ip" > /dev/null
+                            -c \"terraform output -raw ec2_public_ip\" > /dev/null
                     """
                 }
 
@@ -230,7 +230,7 @@ pipeline {
                                     -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                                     -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
                                     hashicorp/terraform:1.9 \\
-                                    -c "terraform output -raw ec2_public_ip"
+                                    -c \"terraform output -raw ec2_public_ip\"
                             """
                         ).trim()
 
@@ -245,7 +245,7 @@ pipeline {
                                     -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                                     -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
                                     hashicorp/terraform:1.9 \\
-                                    -c "terraform output -raw ec2_instance_id"
+                                    -c \"terraform output -raw ec2_instance_id\"
                             """
                         ).trim()
                     }
@@ -387,7 +387,7 @@ pipeline {
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
                             hashicorp/packer:1.11 \\
-                            -c "
+                            -c \"
                                 echo '>>> Initialising Packer plugins...'
                                 packer init .
 
@@ -404,7 +404,7 @@ pipeline {
                                     -var 'base_ami_id=${params.BASE_AMI_ID}' \\
                                     -var 'instance_type=${INSTANCE_TYPE}' \\
                                     .
-                            "
+                            \"
                     """
                 }
 
@@ -460,12 +460,12 @@ print(m['builds'][-1]['artifact_id'].split(':')[1])
                             -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                             -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
                             hashicorp/terraform:1.9 \\
-                            -c "terraform apply \\
+                            -c \"terraform apply \\
                                 -var 'aws_region=${params.AWS_REGION}' \\
                                 -var 'instance_type=${INSTANCE_TYPE}' \\
                                 -var 'ami_id=${env.NEW_AMI_ID}' \\
                                 -auto-approve \\
-                                -input=false"
+                                -input=false\"
                     """
 
                     // Capture the new EC2 IP (EIP is re-associated — should be the same)
@@ -485,7 +485,7 @@ print(m['builds'][-1]['artifact_id'].split(':')[1])
                                         -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                                         -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
                                         hashicorp/terraform:1.9 \\
-                                        -c "terraform output -raw ec2_public_ip"
+                                        -c \"terraform output -raw ec2_public_ip\"
                                 """
                             ).trim()
                         }
