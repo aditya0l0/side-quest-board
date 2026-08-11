@@ -272,13 +272,13 @@ pipeline {
                     )
                 ]) {
                     sh """
-                        chmod 400 "\${EC2_KEY_FILE}"
+                        chmod 400 "\$EC2_KEY_FILE"
                         echo "=== [INFRA] Waiting for SSH on ${env.EC2_HOST}..."
                         for i in \$(seq 1 18); do
                             ssh -o StrictHostKeyChecking=no \\
                                 -o ConnectTimeout=10 \\
                                 -o BatchMode=yes \\
-                                -i "\${EC2_KEY_FILE}" \\
+                                -i "\$EC2_KEY_FILE" \\
                                 ubuntu@${env.EC2_HOST} 'echo "SSH OK"' && break
                             echo "  Attempt \$i/18 — not ready yet, waiting 10s..."
                             sleep 10
@@ -320,18 +320,19 @@ pipeline {
                                     --volumes-from jenkins \\
                                     -e ANSIBLE_HOST_KEY_CHECKING=False \\
                                     -e ANSIBLE_CONFIG=${WORKSPACE}/${ANSIBLE_DIR}/ansible.cfg \\
+                                    -e EC2_KEY_FILE="\$EC2_KEY_FILE" \\
                                     -w ${WORKSPACE} \\
                                     cytopia/ansible:latest-tools \\
-                                    sh -c "
-                                        chmod 400 \\"\\$EC2_KEY_FILE\\"
-                                        echo '=== [INFRA] Running provision.yml on ${env.EC2_HOST} ==='
+                                    sh -c '
+                                        chmod 400 "\$EC2_KEY_FILE"
+                                        echo "=== [INFRA] Running provision.yml on ${env.EC2_HOST} ==="
                                         ansible-playbook \\
                                             -i ${ANSIBLE_DIR}/inventory.ini \\
                                             ${ANSIBLE_DIR}/provision.yml \\
-                                            --private-key \\"\\$EC2_KEY_FILE\\" \\
-                                            -e ansible_host='${env.EC2_HOST}' \\
+                                            --private-key "\$EC2_KEY_FILE" \\
+                                            -e ansible_host="${env.EC2_HOST}" \\
                                             -v
-                                    " 2>&1 | tee ${provisionLog}
+                                    ' 2>&1 | tee ${provisionLog}
                             """
                         )
 
@@ -571,7 +572,7 @@ TFVARS
                     )
                 ]) {
                     sh """
-                        chmod 400 "\${EC2_KEY_FILE}"
+                        chmod 400 "\$EC2_KEY_FILE"
                         echo "=== [INFRA] Smoke testing ${env.EC2_HOST} ==="
 
                         # SSH reachability check
@@ -579,7 +580,7 @@ TFVARS
                             ssh -o StrictHostKeyChecking=no \\
                                 -o ConnectTimeout=10 \\
                                 -o BatchMode=yes \\
-                                -i "\${EC2_KEY_FILE}" \\
+                                -i "\$EC2_KEY_FILE" \\
                                 ubuntu@${env.EC2_HOST} 'echo "SSH OK"' && SSH_OK=1 && break
                             echo "  SSH attempt \$i/18 — waiting 10s..."
                             sleep 10
@@ -590,7 +591,7 @@ TFVARS
                         ssh -o StrictHostKeyChecking=no \\
                             -o ConnectTimeout=10 \\
                             -o BatchMode=yes \\
-                            -i "\${EC2_KEY_FILE}" \\
+                            -i "\$EC2_KEY_FILE" \\
                             ubuntu@${env.EC2_HOST} \\
                             'docker --version && docker compose version && nginx -v' \\
                             && echo ">>> Pre-installed tools verified OK" \\
