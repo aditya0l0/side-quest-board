@@ -51,7 +51,7 @@ source "amazon-ebs" "sidequest" {
 
   # AMI name — unique per run via timestamp
   ami_name        = "${var.ami_name_prefix}-{{timestamp}}"
-  ami_description = "Side-Quest Board golden AMI — pre-baked with Docker, Docker Compose, Nginx, and ufw. Built by Packer."
+  ami_description = "Side-Quest Board golden AMI - pre-baked with Docker, Docker Compose, Nginx, and ufw. Built by Packer."
 
   # Root volume: 20 GiB gp3 (matches the Terraform EC2 root volume)
   launch_block_device_mappings {
