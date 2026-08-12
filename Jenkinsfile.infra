@@ -448,18 +448,17 @@ pipeline {
                         """
                     }
 
-                    // Extract the new AMI ID from manifest.json written by Packer
+                    // Extract the new AMI ID from manifest.json written by Packer.
+                    // Uses pure POSIX grep — no python3/jq dependency on the Jenkins container.
+                    // manifest.json artifact_id format: "region:ami-xxxxxxxxxxxxxxxxx"
+                    // grep -o pulls the raw field value; second grep isolates the ami-* token.
                     script {
                         env.NEW_AMI_ID = sh(
                             returnStdout: true,
                             script: """
-                                python3 -c "
-import json, sys
-with open('${PACKER_DIR}/manifest.json') as f:
-    m = json.load(f)
-# artifact_id format: 'region:ami-xxx'
-print(m['builds'][-1]['artifact_id'].split(':')[1])
-"
+                                grep -o '"artifact_id":"[^"]*"' ${WORKSPACE}/${PACKER_DIR}/manifest.json \
+                                    | tail -1 \
+                                    | grep -o 'ami-[a-f0-9]*'
                             """
                         ).trim()
                         echo "=== [INFRA] Packer bake complete — New AMI ID: ${env.NEW_AMI_ID} ==="
