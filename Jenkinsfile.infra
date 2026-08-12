@@ -102,6 +102,13 @@ pipeline {
         ANSIBLE_FORCE_COLOR = "false"
         ANSIBLE_PYTHON_INTERPRETER = "/usr/bin/python3"
         ANSIBLE_CONFIG = "ansible/ansible.cfg"
+        // ── Packer plugin persistence ──────────────────────────────────────────
+        // Each `docker run --rm` container starts with a clean /root/.config.
+        // By pointing PACKER_PLUGIN_PATH at a directory inside WORKSPACE (which
+        // is on the shared `jenkins` volume via --volumes-from), plugins written
+        // by `packer init` survive into the `packer validate` and `packer build`
+        // containers without needing a shell wrapper or custom image.
+        PACKER_PLUGIN_PATH = "${WORKSPACE}/packer/.packer-plugins"
     }
 
     stages {
@@ -398,11 +405,12 @@ pipeline {
                     ]) {
                         sh """
                             echo "=== [INFRA] Starting Packer AMI bake from base: ${params.BASE_AMI_ID} ==="
-                            echo ">>> Initialising Packer plugins..."
+                            echo ">>> Initialising Packer plugins (persisting to workspace volume)..."
                             docker run --rm \\
                                 --name packer-init-${BUILD_NUMBER} \\
                                 --volumes-from jenkins \\
                                 -w ${WORKSPACE}/${PACKER_DIR} \\
+                                -e PACKER_PLUGIN_PATH="${PACKER_PLUGIN_PATH}" \\
                                 hashicorp/packer:1.11 \\
                                 init .
 
@@ -411,6 +419,7 @@ pipeline {
                                 --name packer-validate-${BUILD_NUMBER} \\
                                 --volumes-from jenkins \\
                                 -w ${WORKSPACE}/${PACKER_DIR} \\
+                                -e PACKER_PLUGIN_PATH="${PACKER_PLUGIN_PATH}" \\
                                 -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                                 -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                                 -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
@@ -426,6 +435,7 @@ pipeline {
                                 --name packer-build-${BUILD_NUMBER} \\
                                 --volumes-from jenkins \\
                                 -w ${WORKSPACE}/${PACKER_DIR} \\
+                                -e PACKER_PLUGIN_PATH="${PACKER_PLUGIN_PATH}" \\
                                 -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
                                 -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
                                 -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
