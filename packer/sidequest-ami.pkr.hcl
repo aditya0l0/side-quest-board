@@ -83,7 +83,9 @@ build {
   sources = ["source.amazon-ebs.sidequest"]
 
   # ── Step 1: Install Ansible on the builder instance ───────────────────────
-  # Ubuntu 22.04 doesn't ship with Ansible. Install it via pip3.
+  # Ubuntu 22.04 enforces PEP 668 (externally-managed-environment), which
+  # blocks `pip3 install` on the system Python. Use the official Ansible PPA
+  # instead — this is the distro-supported installation method.
   # NOTE: The ansible-local provisioner (Step 2) uploads playbook_file and
   #       inventory_file from the Packer host automatically — no separate file
   #       provisioner or manual inventory write is needed.
@@ -91,13 +93,12 @@ build {
     inline = [
       "echo '>>> [Packer] Updating apt cache...'",
       "sudo apt-get update -qq",
-      "echo '>>> [Packer] Installing Python3 and pip3...'",
-      "sudo apt-get install -y python3 python3-pip",
-      "echo '>>> [Packer] Installing Ansible via pip3...'",
-      "sudo pip3 install ansible==9.*",
+      "echo '>>> [Packer] Adding Ansible PPA...'",
+      "sudo apt-get install -y software-properties-common",
+      "sudo apt-add-repository --yes --update ppa:ansible/ansible",
+      "echo '>>> [Packer] Installing Ansible via apt...'",
+      "sudo apt-get install -y ansible",
       "echo '>>> [Packer] Ansible version:' && ansible --version",
-      "echo '>>> [Packer] Installing community.docker Ansible collection...'",
-      "ansible-galaxy collection install community.docker",
       "echo '>>> [Packer] Ansible ready.'"
     ]
   }
@@ -145,8 +146,7 @@ build {
       "echo '>>> [Packer] Cleaning up builder instance before snapshot...'",
       "sudo apt-get clean",
       "sudo rm -rf /var/lib/apt/lists/*",
-      "sudo pip3 uninstall ansible -y || true",
-      "sudo apt-get remove -y python3-pip || true",
+      "sudo apt-get remove -y ansible software-properties-common || true",
       "sudo apt-get autoremove -y",
       "sudo rm -rf /tmp/ansible/",
       "sudo rm -rf ~/.ansible/",
