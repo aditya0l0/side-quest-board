@@ -93,6 +93,9 @@ build {
   # ── Step 2: Install Ansible on the builder instance ───────────────────────
   # Ubuntu 22.04 doesn't ship with Ansible. Install it via pip3 to match
   # exactly what the Jenkins deploy worker (cytopia/ansible) does.
+  # Also writes the Ansible inventory file that Step 3 (ansible-local) will use.
+  # NOTE: inventory_content is NOT a valid ansible-local argument — write the
+  #       inventory to disk here instead and reference it via inventory_file.
   provisioner "shell" {
     inline = [
       "echo '>>> [Packer] Updating apt cache...'",
@@ -104,24 +107,24 @@ build {
       "echo '>>> [Packer] Ansible version:' && ansible --version",
       "echo '>>> [Packer] Installing community.docker Ansible collection...'",
       "ansible-galaxy collection install community.docker",
+      "echo '>>> [Packer] Writing Ansible inventory file...'",
+      "printf '[webservers]\nlocalhost ansible_connection=local ansible_python_interpreter=/usr/bin/python3\n' | sudo tee /tmp/ansible/packer-inventory.ini",
       "echo '>>> [Packer] Ansible ready.'"
     ]
   }
 
   # ── Step 3: Run provision.yml on the builder instance ─────────────────────
   # This is equivalent to running:
-  #   ansible-playbook -i localhost, -c local provision.yml
+  #   ansible-playbook -i /tmp/ansible/packer-inventory.ini provision.yml
   # The playbook is idempotent — safe to re-run.
+  # NOTE: inventory_content is NOT supported by ansible-local (only by the
+  #       remote ansible provisioner). The inventory file is written in Step 2.
   provisioner "ansible-local" {
-    # Run from the uploaded ansible/ directory
-    playbook_file   = "/tmp/ansible/provision.yml"
-    playbook_dir    = "/tmp/ansible/"
+    # Absolute path to the playbook on the builder instance
+    playbook_file  = "/tmp/ansible/provision.yml"
 
-    # Use a simple localhost inventory (we're running directly on the builder)
-    inventory_content = <<-INI
-      [webservers]
-      localhost ansible_connection=local ansible_python_interpreter=/usr/bin/python3
-    INI
+    # Inventory written by the preceding shell provisioner
+    inventory_file = "/tmp/ansible/packer-inventory.ini"
 
     # Extra vars mirroring group_vars/webservers.yml defaults
     extra_arguments = [
