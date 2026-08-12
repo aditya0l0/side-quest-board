@@ -456,7 +456,7 @@ pipeline {
                         env.NEW_AMI_ID = sh(
                             returnStdout: true,
                             script: """
-                                grep -o '"artifact_id":"[^"]*"' ${WORKSPACE}/${PACKER_DIR}/manifest.json \
+                                grep -o '"artifact_id":\s*"[^"]*"' ${WORKSPACE}/${PACKER_DIR}/manifest.json \
                                     | tail -1 \
                                     | grep -o 'ami-[a-f0-9]*'
                             """
