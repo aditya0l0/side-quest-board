@@ -119,9 +119,14 @@ build {
     # Static localhost inventory committed to packer/ dir on the host.
     inventory_file = "localhost.ini"
 
-    # Extra vars mirroring group_vars/webservers.yml defaults
+    # Extra vars mirroring group_vars/webservers.yml defaults.
+    # Each variable gets its own -e flag so ansible-playbook receives them as
+    # separate, valid --extra-vars arguments. Merging multiple key=value pairs
+    # into a single "--extra-vars" token causes Packer's shell splitting to
+    # leave trailing tokens as unrecognised positional arguments (exit 2).
     extra_arguments = [
-      "--extra-vars", "app_name=sidequest app_dir=/opt/sidequest",
+      "-e", "app_name=sidequest",
+      "-e", "app_dir=/opt/sidequest",
       "-v"
     ]
   }
