@@ -53,7 +53,17 @@ pipeline {
     options {
         timestamps()
         buildDiscarder(logRotator(numToKeepStr: '5'))
-        timeout(time: 60, unit: 'MINUTES') // Packer bake can take up to 30 min
+        // ⚠️  NO global pipeline timeout here intentionally.
+        // A pipeline-level timeout() counts wall-clock time from the first build
+        // start and is NOT reset when the Jenkins controller restarts mid-build.
+        // If the controller restarts during the Packer bake (the longest stage),
+        // the global clock would have already expired by the time the build resumes,
+        // causing an immediate ABORTED — even though the build just woke up.
+        //
+        // Instead, per-stage timeout() wrappers are applied directly inside the
+        // steps{} blocks of long-running stages (Packer, Terraform Apply).
+        // These are evaluated *after* Jenkins resumes and give each stage its own
+        // independent budget, preventing a restart from cascading into an abort.
     }
 
     parameters {
@@ -377,70 +387,76 @@ pipeline {
         stage('Packer Bake Golden AMI') {
             when { expression { return params.BAKE_GOLDEN_AMI } }
             steps {
-                withCredentials([
-                    string(credentialsId: 'aws-access-key-id',     variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
-                ]) {
-                    sh """
-                        echo "=== [INFRA] Starting Packer AMI bake from base: ${params.BASE_AMI_ID} ==="
-                        echo ">>> Initialising Packer plugins..."
-                        docker run --rm \\
-                            --name packer-init-${BUILD_NUMBER} \\
-                            --volumes-from jenkins \\
-                            -w ${WORKSPACE}/${PACKER_DIR} \\
-                            hashicorp/packer:1.11 \\
-                            init .
+                // Per-stage timeout: 90 min is generous for Packer init + plugin download
+                // + AMI bake (~15 min) + any EC2 cold-start delay. This timeout starts
+                // *after* Jenkins resumes from a restart, so a controller outage doesn't
+                // consume this budget while the build is paused.
+                timeout(time: 90, unit: 'MINUTES') {
+                    withCredentials([
+                        string(credentialsId: 'aws-access-key-id',     variable: 'AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                    ]) {
+                        sh """
+                            echo "=== [INFRA] Starting Packer AMI bake from base: ${params.BASE_AMI_ID} ==="
+                            echo ">>> Initialising Packer plugins..."
+                            docker run --rm \\
+                                --name packer-init-${BUILD_NUMBER} \\
+                                --volumes-from jenkins \\
+                                -w ${WORKSPACE}/${PACKER_DIR} \\
+                                hashicorp/packer:1.11 \\
+                                init .
 
-                        echo ">>> Validating Packer template..."
-                        docker run --rm \\
-                            --name packer-validate-${BUILD_NUMBER} \\
-                            --volumes-from jenkins \\
-                            -w ${WORKSPACE}/${PACKER_DIR} \\
-                            -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
-                            -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
-                            -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
-                            hashicorp/packer:1.11 \\
-                            validate \\
-                                -var "aws_region=${params.AWS_REGION}" \\
-                                -var "base_ami_id=${params.BASE_AMI_ID}" \\
-                                -var "instance_type=${INSTANCE_TYPE}" \\
-                                .
+                            echo ">>> Validating Packer template..."
+                            docker run --rm \\
+                                --name packer-validate-${BUILD_NUMBER} \\
+                                --volumes-from jenkins \\
+                                -w ${WORKSPACE}/${PACKER_DIR} \\
+                                -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
+                                -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
+                                -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
+                                hashicorp/packer:1.11 \\
+                                validate \\
+                                    -var "aws_region=${params.AWS_REGION}" \\
+                                    -var "base_ami_id=${params.BASE_AMI_ID}" \\
+                                    -var "instance_type=${INSTANCE_TYPE}" \\
+                                    .
 
-                        echo ">>> Building golden AMI..."
-                        docker run --rm \\
-                            --name packer-build-${BUILD_NUMBER} \\
-                            --volumes-from jenkins \\
-                            -w ${WORKSPACE}/${PACKER_DIR} \\
-                            -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
-                            -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
-                            -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
-                            hashicorp/packer:1.11 \\
-                            build \\
-                                -var "aws_region=${params.AWS_REGION}" \\
-                                -var "base_ami_id=${params.BASE_AMI_ID}" \\
-                                -var "instance_type=${INSTANCE_TYPE}" \\
-                                .
-                    """
-                }
+                            echo ">>> Building golden AMI..."
+                            docker run --rm \\
+                                --name packer-build-${BUILD_NUMBER} \\
+                                --volumes-from jenkins \\
+                                -w ${WORKSPACE}/${PACKER_DIR} \\
+                                -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
+                                -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
+                                -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
+                                hashicorp/packer:1.11 \\
+                                build \\
+                                    -var "aws_region=${params.AWS_REGION}" \\
+                                    -var "base_ami_id=${params.BASE_AMI_ID}" \\
+                                    -var "instance_type=${INSTANCE_TYPE}" \\
+                                    .
+                        """
+                    }
 
-                // Extract the new AMI ID from manifest.json written by Packer
-                script {
-                    env.NEW_AMI_ID = sh(
-                        returnStdout: true,
-                        script: """
-                            python3 -c "
+                    // Extract the new AMI ID from manifest.json written by Packer
+                    script {
+                        env.NEW_AMI_ID = sh(
+                            returnStdout: true,
+                            script: """
+                                python3 -c "
 import json, sys
 with open('${PACKER_DIR}/manifest.json') as f:
     m = json.load(f)
 # artifact_id format: 'region:ami-xxx'
 print(m['builds'][-1]['artifact_id'].split(':')[1])
 "
-                        """
-                    ).trim()
-                    echo "=== [INFRA] Packer bake complete — New AMI ID: ${env.NEW_AMI_ID} ==="
-                }
+                            """
+                        ).trim()
+                        echo "=== [INFRA] Packer bake complete — New AMI ID: ${env.NEW_AMI_ID} ==="
+                    }
 
-                archiveArtifacts artifacts: "${PACKER_DIR}/manifest.json", allowEmptyArchive: true
+                    archiveArtifacts artifacts: "${PACKER_DIR}/manifest.json", allowEmptyArchive: true
+                } // end timeout(90 min) — Packer Bake
             }
         }
 
@@ -460,51 +476,56 @@ print(m['builds'][-1]['artifact_id'].split(':')[1])
         stage('Terraform Apply (Golden EC2)') {
             when { expression { return params.BAKE_GOLDEN_AMI } }
             steps {
-                withCredentials([
-                    string(credentialsId: 'aws-access-key-id',     variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
-                ]) {
-                    sh """
-                        echo "=== [INFRA] Re-launching instance from golden AMI: ${env.NEW_AMI_ID} ==="
-                        docker run --rm \\
-                            --name tf-golden-${BUILD_NUMBER} \\
-                            --volumes-from jenkins \\
-                            -w ${WORKSPACE}/${TF_DIR} \\
-                            -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
-                            -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
-                            -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
-                            hashicorp/terraform:1.9 \\
-                            apply \\
-                                -var "aws_region=${params.AWS_REGION}" \\
-                                -var "instance_type=${INSTANCE_TYPE}" \\
-                                -var "ami_id=${env.NEW_AMI_ID}" \\
-                                -auto-approve \\
-                                -input=false
-                    """
+                // Per-stage timeout: 30 min is enough for Terraform to replace the
+                // EC2 instance and re-associate the EIP. Scoped here so a Jenkins
+                // restart does not consume this budget while the build is paused.
+                timeout(time: 30, unit: 'MINUTES') {
+                    withCredentials([
+                        string(credentialsId: 'aws-access-key-id',     variable: 'AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                    ]) {
+                        sh """
+                            echo "=== [INFRA] Re-launching instance from golden AMI: ${env.NEW_AMI_ID} ==="
+                            docker run --rm \\
+                                --name tf-golden-${BUILD_NUMBER} \\
+                                --volumes-from jenkins \\
+                                -w ${WORKSPACE}/${TF_DIR} \\
+                                -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
+                                -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
+                                -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
+                                hashicorp/terraform:1.9 \\
+                                apply \\
+                                    -var "aws_region=${params.AWS_REGION}" \\
+                                    -var "instance_type=${INSTANCE_TYPE}" \\
+                                    -var "ami_id=${env.NEW_AMI_ID}" \\
+                                    -auto-approve \\
+                                    -input=false
+                        """
 
-                    // Capture the new EC2 IP (EIP is re-associated — should be the same)
-                    script {
-                        withCredentials([
-                            string(credentialsId: 'aws-access-key-id',     variable: 'AWS_ACCESS_KEY_ID'),
-                            string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
-                        ]) {
-                            env.EC2_HOST = sh(
-                                returnStdout: true,
-                                script: """
-                                    docker run --rm \\
-                                        --volumes-from jenkins \\
-                                        -w ${WORKSPACE}/${TF_DIR} \\
-                                        -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
-                                        -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
-                                        -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
-                                        hashicorp/terraform:1.9 \\
-                                        output -raw ec2_public_ip
-                                """
-                            ).trim()
+                        // Capture the new EC2 IP (EIP is re-associated — should be the same)
+                        script {
+                            withCredentials([
+                                string(credentialsId: 'aws-access-key-id',     variable: 'AWS_ACCESS_KEY_ID'),
+                                string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                            ]) {
+                                env.EC2_HOST = sh(
+                                    returnStdout: true,
+                                    script: """
+                                        docker run --rm \\
+                                            --volumes-from jenkins \\
+                                            -w ${WORKSPACE}/${TF_DIR} \\
+                                            -e AWS_ACCESS_KEY_ID="\${AWS_ACCESS_KEY_ID}" \\
+                                            -e AWS_SECRET_ACCESS_KEY="\${AWS_SECRET_ACCESS_KEY}" \\
+                                            -e AWS_DEFAULT_REGION=${params.AWS_REGION} \\
+                                            hashicorp/terraform:1.9 \\
+                                            output -raw ec2_public_ip
+                                    """
+                                ).trim()
+                            }
+                            echo "=== [INFRA] Golden instance live at: ${env.EC2_HOST} ==="
                         }
-                        echo "=== [INFRA] Golden instance live at: ${env.EC2_HOST} ==="
                     }
-                }
+                } // end timeout(30 min) — Terraform Apply (Golden EC2)
             }
         }
 
