@@ -82,20 +82,11 @@ build {
   name    = "sidequest-golden-ami"
   sources = ["source.amazon-ebs.sidequest"]
 
-  # ── Step 1: Upload Ansible playbooks ──────────────────────────────────────
-  # The ansible/ directory is uploaded from the Jenkins workspace (or local machine)
-  # to /tmp/ansible/ on the builder instance.
-  provisioner "file" {
-    source      = "../ansible/"
-    destination = "/tmp/ansible/"
-  }
-
-  # ── Step 2: Install Ansible on the builder instance ───────────────────────
-  # Ubuntu 22.04 doesn't ship with Ansible. Install it via pip3 to match
-  # exactly what the Jenkins deploy worker (cytopia/ansible) does.
-  # Also writes the Ansible inventory file that Step 3 (ansible-local) will use.
-  # NOTE: inventory_content is NOT a valid ansible-local argument — write the
-  #       inventory to disk here instead and reference it via inventory_file.
+  # ── Step 1: Install Ansible on the builder instance ───────────────────────
+  # Ubuntu 22.04 doesn't ship with Ansible. Install it via pip3.
+  # NOTE: The ansible-local provisioner (Step 2) uploads playbook_file and
+  #       inventory_file from the Packer host automatically — no separate file
+  #       provisioner or manual inventory write is needed.
   provisioner "shell" {
     inline = [
       "echo '>>> [Packer] Updating apt cache...'",
@@ -107,24 +98,25 @@ build {
       "echo '>>> [Packer] Ansible version:' && ansible --version",
       "echo '>>> [Packer] Installing community.docker Ansible collection...'",
       "ansible-galaxy collection install community.docker",
-      "echo '>>> [Packer] Writing Ansible inventory file...'",
-      "printf '[webservers]\nlocalhost ansible_connection=local ansible_python_interpreter=/usr/bin/python3\n' | sudo tee /tmp/ansible/packer-inventory.ini",
       "echo '>>> [Packer] Ansible ready.'"
     ]
   }
 
-  # ── Step 3: Run provision.yml on the builder instance ─────────────────────
-  # This is equivalent to running:
-  #   ansible-playbook -i /tmp/ansible/packer-inventory.ini provision.yml
-  # The playbook is idempotent — safe to re-run.
-  # NOTE: inventory_content is NOT supported by ansible-local (only by the
-  #       remote ansible provisioner). The inventory file is written in Step 2.
+  # ── Step 2: Run provision.yml via ansible-local ───────────────────────────
+  # ansible-local uploads playbook_file + inventory_file from the Packer HOST
+  # (the Jenkins workspace / packer container) to a staging dir on the builder
+  # instance, then executes ansible-playbook locally on the builder.
+  #
+  # IMPORTANT — path semantics:
+  #   playbook_file  = path on the PACKER HOST (validated by `packer validate`)
+  #   inventory_file = path on the PACKER HOST (validated by `packer validate`)
+  # Both files are uploaded to the builder instance staging directory by Packer.
   provisioner "ansible-local" {
-    # Absolute path to the playbook on the builder instance
-    playbook_file  = "/tmp/ansible/provision.yml"
+    # Path on the Packer host (Jenkins workspace). Packer uploads this file.
+    playbook_file  = "../ansible/provision.yml"
 
-    # Inventory written by the preceding shell provisioner
-    inventory_file = "/tmp/ansible/packer-inventory.ini"
+    # Static localhost inventory committed to packer/ dir on the host.
+    inventory_file = "localhost.ini"
 
     # Extra vars mirroring group_vars/webservers.yml defaults
     extra_arguments = [
