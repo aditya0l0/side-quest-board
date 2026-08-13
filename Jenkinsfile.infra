@@ -34,7 +34,7 @@
  *   aws-access-key-id       — Secret text   — AWS Access Key ID
  *   aws-secret-access-key   — Secret text   — AWS Secret Access Key
  *   ec2-ssh-key             — SSH key       — Private key for EC2 access
- *   github-pat              — Secret text   — GitHub Personal Access Token (for git push)
+ *   github-pat              — Username with password — GitHub username + PAT (for git push)
  *
  * REQUIRED JENKINS PARAMETERS
  * ────────────────────────────
@@ -572,7 +572,7 @@ pipeline {
             when { expression { return params.BAKE_GOLDEN_AMI } }
             steps {
                 withCredentials([
-                    string(credentialsId: 'github-pat', variable: 'GITHUB_TOKEN')
+                    usernamePassword(credentialsId: 'github-pat', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')
                 ]) {
                     sh """
                         echo "=== [INFRA] Updating terraform/terraform.tfvars with AMI: ${env.NEW_AMI_ID} ==="
@@ -599,8 +599,10 @@ TFVARS
                         git config user.email "jenkins@sidequest-bot"
                         git config user.name "Jenkins Infra Bot"
 
-                        # Embed the PAT into the remote URL for authenticated push
-                        REPO_URL=\$(echo "${params.GITHUB_REPO_URL}" | sed 's|https://|https://\${GITHUB_TOKEN}@|')
+                        # Embed the PAT (password field) into the remote URL for authenticated push.
+                        # github-pat is stored as Username/Password in Jenkins: GIT_USER = GitHub
+                        # username, GIT_PASS = Personal Access Token.
+                        REPO_URL=\$(echo "${params.GITHUB_REPO_URL}" | sed 's|https://|https://\${GIT_PASS}@|')
                         BRANCH=\$(git rev-parse --abbrev-ref HEAD)
 
                         # Pull any commits that landed while Packer was baking + Terraform
