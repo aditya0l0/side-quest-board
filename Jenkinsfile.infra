@@ -290,6 +290,14 @@ pipeline {
                 ]) {
                     sh """
                         chmod 400 "\$EC2_KEY_FILE"
+                        # Purge any stale host-key entry for this IP.
+                        # In immutable-infra, the EIP re-associates to a brand-new instance
+                        # after each golden AMI re-launch, generating a fresh SSH host key.
+                        # The Jenkins container's known_hosts retains the OLD fingerprint,
+                        # causing a MITM warning (and potential failure if StrictHostKeyChecking
+                        # is ever tightened). Removing the entry before probing keeps this
+                        # stage idempotent across instance replacements.
+                        ssh-keygen -f '/root/.ssh/known_hosts' -R '${env.EC2_HOST}' 2>/dev/null || true
                         echo "=== [INFRA] Waiting for SSH on ${env.EC2_HOST}..."
                         for i in \$(seq 1 18); do
                             ssh -o StrictHostKeyChecking=no \\
@@ -604,6 +612,10 @@ TFVARS
                     sh """
                         chmod 400 "\$EC2_KEY_FILE"
                         echo "=== [INFRA] Smoke testing ${env.EC2_HOST} ==="
+
+                        # Purge stale host key — the golden re-launch produces a new instance
+                        # with fresh SSH host keys. Clean up before probing to avoid noise.
+                        ssh-keygen -f '/root/.ssh/known_hosts' -R '${env.EC2_HOST}' 2>/dev/null || true
 
                         # SSH reachability check
                         for i in \$(seq 1 18); do
