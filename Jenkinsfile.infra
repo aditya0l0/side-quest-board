@@ -610,7 +610,7 @@ TFVARS
                         # causes a non-fast-forward rejection and aborts the stage even though
                         # the golden AMI is already live.
                         git fetch "\${REPO_URL}" "\${BRANCH}"
-                        git rebase "origin/\${BRANCH}" || git rebase --abort
+                        git rebase FETCH_HEAD || git rebase --abort
 
                         # Stage and commit terraform.tfvars
                         git add ${TF_DIR}/terraform.tfvars
