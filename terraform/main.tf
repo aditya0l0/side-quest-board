@@ -134,11 +134,11 @@ resource "aws_instance" "sidequest" {
 
   vpc_security_group_ids = [aws_security_group.sidequest.id]
 
-  # Root volume: 16 GiB gp3 (matches existing imported instance; free-tier allows up to 30 GiB EBS)
+  # Root volume: 20 GiB gp3 — minimum required by the golden AMI snapshot (snap-0fae5abc1fd5b9a1f).
   # ⚠️  NOTE: t3.small is NOT free-tier eligible (~$0.0208/hr in eu-north-1).
   root_block_device {
     volume_type           = "gp3"
-    volume_size           = 16
+    volume_size           = 20
     delete_on_termination = true
     encrypted             = false
   }
