@@ -626,7 +626,7 @@ TFVARS
 
                         # Push. --force-with-lease is safe: it rejects the push only if
                         # someone pushed AFTER our fetch above, preventing accidental overwrites.
-                        git push --force-with-lease "\${REPO_URL}" "\${BRANCH}"
+                        git push --force-with-lease "\${REPO_URL}" "HEAD:\${BRANCH}"
 
                         echo "=== [INFRA] AMI ID committed and pushed to git ==="
                     """
