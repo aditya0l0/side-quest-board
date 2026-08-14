@@ -141,6 +141,10 @@ pipeline {
                     string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
                 ]) {
                     sh """
+                        # L1 — Pre-clean named containers to prevent "already in use" on Replay.
+                        docker rm -f tf-init-${BUILD_NUMBER}     2>/dev/null || true
+                        docker rm -f tf-validate-${BUILD_NUMBER} 2>/dev/null || true
+
                         docker run --rm \\
                             --name tf-init-${BUILD_NUMBER} \\
                             --volumes-from jenkins \\
@@ -178,6 +182,9 @@ pipeline {
                     string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
                 ]) {
                     sh """
+                        # L2 — Pre-clean named container to prevent "already in use" on Replay.
+                        docker rm -f tf-plan-${BUILD_NUMBER} 2>/dev/null || true
+
                         docker run --rm \\
                             --name tf-plan-${BUILD_NUMBER} \\
                             --volumes-from jenkins \\
@@ -212,6 +219,13 @@ pipeline {
                     string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
                 ]) {
                     sh """
+                        # L3 — Pre-clean named containers to prevent "already in use" on Replay.
+                        docker rm -f tf-apply-${BUILD_NUMBER}  2>/dev/null || true
+                        docker rm -f tf-output-${BUILD_NUMBER} 2>/dev/null || true
+
+                        # H3 — Pass ami_id and key_name explicitly so Stage 4 never silently
+                        # falls back to a stale or blank value from terraform.tfvars.
+                        # On a fresh account with no tfvars yet, BASE_AMI_ID is the safe default.
                         docker run --rm \\
                             --name tf-apply-${BUILD_NUMBER} \\
                             --volumes-from jenkins \\
@@ -223,6 +237,8 @@ pipeline {
                             apply \\
                                 -var "aws_region=${params.AWS_REGION}" \\
                                 -var "instance_type=${INSTANCE_TYPE}" \\
+                                -var "ami_id=${params.BASE_AMI_ID}" \\
+                                -var "key_name=ec2-key" \\
                                 -auto-approve \\
                                 -input=false
                     """
@@ -577,6 +593,14 @@ pipeline {
         stage('Commit AMI ID to Git') {
             when { expression { return params.BAKE_GOLDEN_AMI } }
             steps {
+                // H2 — Guard: NEW_AMI_ID must be set. If Packer stage was skipped or failed,
+                // env.NEW_AMI_ID is null (Groovy interpolates to the string "null"), which
+                // would write ami_id = "null" into terraform.tfvars — silently corrupting it.
+                script {
+                    if (!env.NEW_AMI_ID || env.NEW_AMI_ID == 'null' || env.NEW_AMI_ID.trim() == '') {
+                        error('[INFRA] NEW_AMI_ID is not set or null — Packer bake stage may have been skipped or failed. Aborting git commit.')
+                    }
+                }
                 withCredentials([
                     usernamePassword(credentialsId: 'github-pat', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')
                 ]) {
@@ -587,10 +611,26 @@ pipeline {
                         git config user.email "jenkins@sidequest-bot"
                         git config user.name "Jenkins Infra Bot"
 
-                        # Embed the PAT (password field) into the remote URL for authenticated push.
-                        # github-pat is stored as Username/Password in Jenkins: GIT_USER = GitHub
-                        # username, GIT_PASS = Personal Access Token.
-                        REPO_URL=\$(echo "${params.GITHUB_REPO_URL}" | sed "s|https://|https://\${GIT_PASS}@|")
+                        # Use GIT_ASKPASS to supply credentials without embedding the PAT
+                        # in the URL. URL-embedding can fail in headless environments when
+                        # git's credential helper intercepts the request first and then tries
+                        # to open a TTY to prompt the user (causing:
+                        #   fatal: could not read Password: No such device or address).
+                        # GIT_ASKPASS bypasses all credential helpers entirely.
+                        ASKPASS_SCRIPT=\$(mktemp /tmp/git-askpass-XXXXXX)
+                        chmod 700 "\${ASKPASS_SCRIPT}"
+                        # H1 — Write the ASKPASS script using printenv so the PAT value is read
+                        # from the environment at git-call time, not embedded as a literal string.
+                        # This avoids printf format-specifier corruption if the PAT contains '%',
+                        # and avoids shell-quoting breakage if the PAT contains '"'.
+                        printf '#!/bin/sh\nprintenv GIT_PASS\n' > "\${ASKPASS_SCRIPT}"
+                        # M4 — Register EXIT trap NOW (after mktemp) so the temp file is always
+                        # deleted even if any subsequent command fails and the shell exits early.
+                        # Without this, a failed push leaves a plaintext PAT on disk.
+                        trap 'rm -f "\${ASKPASS_SCRIPT}"' EXIT
+
+                        # Plain HTTPS remote URL (no embedded token — credentials supplied via ASKPASS)
+                        REPO_URL="${params.GITHUB_REPO_URL}"
                         # Use the explicit BRANCH_NAME parameter — Jenkins checks out in
                         # detached HEAD mode, so `git rev-parse --abbrev-ref HEAD` returns
                         # the literal string "HEAD", not a real branch name.
@@ -599,8 +639,11 @@ pipeline {
                         # Rebase FIRST — while the working tree is still clean — to sync any
                         # commits that landed during the ~30-45 min Packer bake + Terraform window.
                         # Rebasing on a dirty tree causes "cannot rebase: You have unstaged changes".
-                        git fetch "\${REPO_URL}" "\${BRANCH}"
-                        git rebase FETCH_HEAD || git rebase --abort
+                        GIT_ASKPASS="\${ASKPASS_SCRIPT}" git fetch "\${REPO_URL}" "\${BRANCH}"
+                        # M2 — Append '|| true' so that if git rebase --abort itself exits non-zero
+                        # ("no rebase in progress" — e.g., on a fast-forward fetch with no conflict),
+                        # the shell command still returns 0 and the stage continues normally.
+                        git rebase FETCH_HEAD || git rebase --abort || true
 
                         # Now write terraform.tfvars (working tree is clean post-rebase).
                         # Including ALL non-secret variables prevents silent drift if defaults
@@ -626,7 +669,12 @@ TFVARS
 
                         # Push. --force-with-lease is safe: it rejects the push only if
                         # someone pushed AFTER our fetch above, preventing accidental overwrites.
-                        git push --force-with-lease "\${REPO_URL}" "HEAD:\${BRANCH}"
+                        GIT_ASKPASS="\${ASKPASS_SCRIPT}" git -c credential.helper= push --force-with-lease "\${REPO_URL}" "HEAD:\${BRANCH}"
+
+                        # M4 — The EXIT trap (registered above after mktemp) handles cleanup
+                        # unconditionally. This explicit rm is kept as a belt-and-suspenders
+                        # safety net for shells that don't honour EXIT traps on normal exit.
+                        rm -f "\${ASKPASS_SCRIPT}" || true
 
                         echo "=== [INFRA] AMI ID committed and pushed to git ==="
                     """
@@ -657,6 +705,10 @@ TFVARS
                         ssh-keygen -f '/root/.ssh/known_hosts' -R '${env.EC2_HOST}' 2>/dev/null || true
 
                         # SSH reachability check
+                        # M6 — Explicitly initialize SSH_OK=0 before the loop.
+                        # Stage 5 does this correctly; mirroring it here prevents a spurious
+                        # pass if the variable somehow carries a value from a prior shell scope.
+                        SSH_OK=0
                         for i in \$(seq 1 18); do
                             ssh -o StrictHostKeyChecking=no \\
                                 -o ConnectTimeout=10 \\
