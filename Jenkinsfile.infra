@@ -612,18 +612,26 @@ pipeline {
                         git config user.name "Jenkins Infra Bot"
 
                         # Use GIT_ASKPASS to supply credentials without embedding the PAT
-                        # in the URL. URL-embedding can fail in headless environments when
-                        # git's credential helper intercepts the request first and then tries
-                        # to open a TTY to prompt the user (causing:
-                        #   fatal: could not read Password: No such device or address).
-                        # GIT_ASKPASS bypasses all credential helpers entirely.
+                        # in the URL. Git calls GIT_ASKPASS twice: first for the Username prompt,
+                        # then for the Password prompt. The script must return GIT_USER for the
+                        # username prompt and GIT_PASS for the password prompt.
                         ASKPASS_SCRIPT=\$(mktemp /tmp/git-askpass-XXXXXX)
                         chmod 700 "\${ASKPASS_SCRIPT}"
-                        # H1 — Write the ASKPASS script using printenv so the PAT value is read
-                        # from the environment at git-call time, not embedded as a literal string.
-                        # This avoids printf format-specifier corruption if the PAT contains '%',
-                        # and avoids shell-quoting breakage if the PAT contains '"'.
-                        printf '#!/bin/sh\nprintenv GIT_PASS\n' > "\${ASKPASS_SCRIPT}"
+                        cat << 'EOF' > "\${ASKPASS_SCRIPT}"
+#!/bin/sh
+case "\$1" in
+    *Username*|*username*|*User*|*user*)
+        if [ -n "\$GIT_USER" ]; then
+            printf '%s\n' "\$GIT_USER"
+        else
+            printf 'x-access-token\n'
+        fi
+        ;;
+    *)
+        printf '%s\n' "\$GIT_PASS"
+        ;;
+esac
+EOF
                         # M4 — Register EXIT trap NOW (after mktemp) so the temp file is always
                         # deleted even if any subsequent command fails and the shell exits early.
                         # Without this, a failed push leaves a plaintext PAT on disk.
@@ -639,7 +647,7 @@ pipeline {
                         # Rebase FIRST — while the working tree is still clean — to sync any
                         # commits that landed during the ~30-45 min Packer bake + Terraform window.
                         # Rebasing on a dirty tree causes "cannot rebase: You have unstaged changes".
-                        GIT_ASKPASS="\${ASKPASS_SCRIPT}" git fetch "\${REPO_URL}" "\${BRANCH}"
+                        GIT_ASKPASS="\${ASKPASS_SCRIPT}" git -c credential.helper= fetch "\${REPO_URL}" "\${BRANCH}"
                         # M2 — Append '|| true' so that if git rebase --abort itself exits non-zero
                         # ("no rebase in progress" — e.g., on a fast-forward fetch with no conflict),
                         # the shell command still returns 0 and the stage continues normally.
