@@ -611,43 +611,22 @@ pipeline {
                         git config user.email "jenkins@sidequest-bot"
                         git config user.name "Jenkins Infra Bot"
 
-                        # Use GIT_ASKPASS to supply credentials without embedding the PAT
-                        # in the URL. Git calls GIT_ASKPASS twice: first for the Username prompt,
-                        # then for the Password prompt. The script must return GIT_USER for the
-                        # username prompt and GIT_PASS for the password prompt.
-                        ASKPASS_SCRIPT=\$(mktemp /tmp/git-askpass-XXXXXX)
-                        chmod 700 "\${ASKPASS_SCRIPT}"
-                        cat << 'EOF' > "\${ASKPASS_SCRIPT}"
-#!/bin/sh
-case "\$1" in
-    *Username*|*username*|*User*|*user*)
-        if [ -n "\$GIT_USER" ]; then
-            printf '%s\n' "\$GIT_USER"
-        else
-            printf 'x-access-token\n'
-        fi
-        ;;
-    *)
-        printf '%s\n' "\$GIT_PASS"
-        ;;
-esac
-EOF
-                        # M4 — Register EXIT trap NOW (after mktemp) so the temp file is always
-                        # deleted even if any subsequent command fails and the shell exits early.
-                        # Without this, a failed push leaves a plaintext PAT on disk.
-                        trap 'rm -f "\${ASKPASS_SCRIPT}"' EXIT
-
-                        # Plain HTTPS remote URL (no embedded token — credentials supplied via ASKPASS)
+                        # Plain HTTPS remote URL
                         REPO_URL="${params.GITHUB_REPO_URL}"
                         # Use the explicit BRANCH_NAME parameter — Jenkins checks out in
                         # detached HEAD mode, so `git rev-parse --abbrev-ref HEAD` returns
                         # the literal string "HEAD", not a real branch name.
                         BRANCH="${params.BRANCH_NAME}"
 
+                        # Generate HTTP Basic Auth header for GitHub (base64 of username:PAT or x-access-token:PAT)
+                        # Passing credentials via http.extraheader avoids TTY prompting, credential helper
+                        # conflicts, and GIT_ASKPASS subshell/prompt parsing issues entirely.
+                        AUTH_HEADER="Authorization: Basic \$(printf '%s:%s' "\${GIT_USER:-x-access-token}" "\${GIT_PASS}" | base64 | tr -d '\\r\\n')"
+
                         # Rebase FIRST — while the working tree is still clean — to sync any
                         # commits that landed during the ~30-45 min Packer bake + Terraform window.
                         # Rebasing on a dirty tree causes "cannot rebase: You have unstaged changes".
-                        GIT_ASKPASS="\${ASKPASS_SCRIPT}" git -c credential.helper= fetch "\${REPO_URL}" "\${BRANCH}"
+                        git -c "http.extraheader=\${AUTH_HEADER}" fetch "\${REPO_URL}" "\${BRANCH}"
                         # M2 — Append '|| true' so that if git rebase --abort itself exits non-zero
                         # ("no rebase in progress" — e.g., on a fast-forward fetch with no conflict),
                         # the shell command still returns 0 and the stage continues normally.
@@ -677,12 +656,7 @@ TFVARS
 
                         # Push. --force-with-lease is safe: it rejects the push only if
                         # someone pushed AFTER our fetch above, preventing accidental overwrites.
-                        GIT_ASKPASS="\${ASKPASS_SCRIPT}" git -c credential.helper= push --force-with-lease "\${REPO_URL}" "HEAD:\${BRANCH}"
-
-                        # M4 — The EXIT trap (registered above after mktemp) handles cleanup
-                        # unconditionally. This explicit rm is kept as a belt-and-suspenders
-                        # safety net for shells that don't honour EXIT traps on normal exit.
-                        rm -f "\${ASKPASS_SCRIPT}" || true
+                        git -c "http.extraheader=\${AUTH_HEADER}" push --force-with-lease "\${REPO_URL}" "HEAD:\${BRANCH}"
 
                         echo "=== [INFRA] AMI ID committed and pushed to git ==="
                     """
