@@ -626,7 +626,7 @@ pipeline {
                         # Rebase FIRST — while the working tree is still clean — to sync any
                         # commits that landed during the ~30-45 min Packer bake + Terraform window.
                         # Rebasing on a dirty tree causes "cannot rebase: You have unstaged changes".
-                        git -c "http.extraheader=\${AUTH_HEADER}" fetch "\${REPO_URL}" "\${BRANCH}"
+                        git -c credential.helper= -c "http.extraheader=\${AUTH_HEADER}" fetch "\${REPO_URL}" "\${BRANCH}"
                         # M2 — Append '|| true' so that if git rebase --abort itself exits non-zero
                         # ("no rebase in progress" — e.g., on a fast-forward fetch with no conflict),
                         # the shell command still returns 0 and the stage continues normally.
@@ -656,7 +656,7 @@ TFVARS
 
                         # Push. --force-with-lease is safe: it rejects the push only if
                         # someone pushed AFTER our fetch above, preventing accidental overwrites.
-                        git -c "http.extraheader=\${AUTH_HEADER}" push --force-with-lease "\${REPO_URL}" "HEAD:\${BRANCH}"
+                        git -c credential.helper= -c "http.extraheader=\${AUTH_HEADER}" push --force-with-lease "\${REPO_URL}" "HEAD:\${BRANCH}"
 
                         echo "=== [INFRA] AMI ID committed and pushed to git ==="
                     """
