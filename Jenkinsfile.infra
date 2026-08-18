@@ -626,7 +626,16 @@ pipeline {
                         # Rebase FIRST — while the working tree is still clean — to sync any
                         # commits that landed during the ~30-45 min Packer bake + Terraform window.
                         # Rebasing on a dirty tree causes "cannot rebase: You have unstaged changes".
-                        git -c credential.helper= -c "http.extraheader=\${AUTH_HEADER}" fetch "\${REPO_URL}" "\${BRANCH}"
+                        #
+                        # IMPORTANT: use an explicit refspec (+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH)
+                        # so this bare-URL fetch ALSO updates the local tracking ref.
+                        # Without this, 'git fetch <url> $BRANCH' only writes FETCH_HEAD.
+                        # --force-with-lease (below) checks refs/remotes/origin/$BRANCH — if that ref
+                        # is stale or absent it always sees a "stale info" mismatch and rejects the push.
+                        git -c credential.helper= -c "http.extraheader=\${AUTH_HEADER}" \\
+                            fetch "\${REPO_URL}" "+refs/heads/\${BRANCH}:refs/remotes/origin/\${BRANCH}"
+                        # Capture the remote tip SHA immediately after fetch for the pinned lease below.
+                        REMOTE_TIP="\$(git rev-parse refs/remotes/origin/\${BRANCH})"
                         # M2 — Append '|| true' so that if git rebase --abort itself exits non-zero
                         # ("no rebase in progress" — e.g., on a fast-forward fetch with no conflict),
                         # the shell command still returns 0 and the stage continues normally.
@@ -654,9 +663,11 @@ TFVARS
                         git add ${TF_DIR}/terraform.tfvars
                         git diff --cached --quiet || git commit -m "infra: update golden AMI to ${env.NEW_AMI_ID} [build #${BUILD_NUMBER}] [skip ci]"
 
-                        # Push. --force-with-lease is safe: it rejects the push only if
-                        # someone pushed AFTER our fetch above, preventing accidental overwrites.
-                        git -c credential.helper= -c "http.extraheader=\${AUTH_HEADER}" push --force-with-lease "\${REPO_URL}" "HEAD:\${BRANCH}"
+                        # Push with an explicit expected-SHA lease (REMOTE_TIP captured right after fetch).
+                        # This pins the lease to the exact commit we rebased on, preventing the race where
+                        # a concurrent build updates the tracking ref between our fetch and push, which
+                        # would cause an implicit --force-with-lease check to see a different expected SHA.
+                        git -c credential.helper= -c "http.extraheader=\${AUTH_HEADER}" push --force-with-lease="\${BRANCH}:\${REMOTE_TIP}" "\${REPO_URL}" "HEAD:\${BRANCH}"
 
                         echo "=== [INFRA] AMI ID committed and pushed to git ==="
                     """
