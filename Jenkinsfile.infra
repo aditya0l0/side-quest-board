@@ -621,7 +621,7 @@ pipeline {
                         # Generate HTTP Basic Auth header for GitHub (base64 of username:PAT or x-access-token:PAT)
                         # Passing credentials via http.extraheader avoids TTY prompting, credential helper
                         # conflicts, and GIT_ASKPASS subshell/prompt parsing issues entirely.
-                        AUTH_HEADER="Authorization: Basic \$(printf '%s:%s' "\${GIT_USER:-x-access-token}" "\${GIT_PASS}" | base64 | tr -d '\\r\\n')"
+                        AUTH_HEADER="Authorization: Basic \$(printf '%s:%s' \${GIT_USER:-x-access-token} \${GIT_PASS} | base64 | tr -d '\\r\\n')"
 
                         # Rebase FIRST — while the working tree is still clean — to sync any
                         # commits that landed during the ~30-45 min Packer bake + Terraform window.
