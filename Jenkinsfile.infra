@@ -611,13 +611,6 @@ pipeline {
                         git config user.email "jenkins@sidequest-bot"
                         git config user.name "Jenkins Infra Bot"
 
-                        # Plain HTTPS remote URL
-                        REPO_URL="${params.GITHUB_REPO_URL}"
-                        # Use the explicit BRANCH_NAME parameter — Jenkins checks out in
-                        # detached HEAD mode, so `git rev-parse --abbrev-ref HEAD` returns
-                        # the literal string "HEAD", not a real branch name.
-                        BRANCH="${params.BRANCH_NAME}"
-
                         # Generate HTTP Basic Auth header for GitHub (base64 of username:PAT or x-access-token:PAT)
                         # Passing credentials via http.extraheader avoids TTY prompting, credential helper
                         # conflicts, and GIT_ASKPASS subshell/prompt parsing issues entirely.
@@ -627,15 +620,16 @@ pipeline {
                         # commits that landed during the ~30-45 min Packer bake + Terraform window.
                         # Rebasing on a dirty tree causes "cannot rebase: You have unstaged changes".
                         #
-                        # IMPORTANT: use an explicit refspec (+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH)
-                        # so this bare-URL fetch ALSO updates the local tracking ref.
-                        # Without this, 'git fetch <url> $BRANCH' only writes FETCH_HEAD.
-                        # --force-with-lease (below) checks refs/remotes/origin/$BRANCH — if that ref
-                        # is stale or absent it always sees a "stale info" mismatch and rejects the push.
+                        # IMPORTANT: use an explicit refspec so this fetch ALSO updates the local
+                        # tracking ref (refs/remotes/origin/${params.BRANCH_NAME}). Without the mapping,
+                        # a bare fetch only writes FETCH_HEAD and --force-with-lease sees a "stale info"
+                        # mismatch on the tracking ref, rejecting the push.
+                        # NOTE: BRANCH_NAME and GITHUB_REPO_URL are expanded by Groovy before the shell
+                        # runs — they are never shell variables, avoiding \${} escaping issues in CPS.
                         git -c credential.helper= -c "http.extraheader=\${AUTH_HEADER}" \\
-                            fetch "\${REPO_URL}" "+refs/heads/\${BRANCH}:refs/remotes/origin/\${BRANCH}"
+                            fetch "${params.GITHUB_REPO_URL}" "+refs/heads/${params.BRANCH_NAME}:refs/remotes/origin/${params.BRANCH_NAME}"
                         # Capture the remote tip SHA immediately after fetch for the pinned lease below.
-                        REMOTE_TIP="\$(git rev-parse refs/remotes/origin/\${BRANCH})"
+                        REMOTE_TIP="\$(git rev-parse refs/remotes/origin/${params.BRANCH_NAME})"
                         # M2 — Append '|| true' so that if git rebase --abort itself exits non-zero
                         # ("no rebase in progress" — e.g., on a fast-forward fetch with no conflict),
                         # the shell command still returns 0 and the stage continues normally.
@@ -667,7 +661,7 @@ TFVARS
                         # This pins the lease to the exact commit we rebased on, preventing the race where
                         # a concurrent build updates the tracking ref between our fetch and push, which
                         # would cause an implicit --force-with-lease check to see a different expected SHA.
-                        git -c credential.helper= -c "http.extraheader=\${AUTH_HEADER}" push --force-with-lease="\${BRANCH}:\${REMOTE_TIP}" "\${REPO_URL}" "HEAD:\${BRANCH}"
+                        git -c credential.helper= -c "http.extraheader=\${AUTH_HEADER}" push --force-with-lease="refs/remotes/origin/${params.BRANCH_NAME}:\${REMOTE_TIP}" "${params.GITHUB_REPO_URL}" "HEAD:${params.BRANCH_NAME}"
 
                         echo "=== [INFRA] AMI ID committed and pushed to git ==="
                     """
