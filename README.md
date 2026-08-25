@@ -484,9 +484,3 @@ All production secrets and keys are injected dynamically at runtime via Jenkins 
   ```bash
   npm run lint
   ```
-
----
-
-## 📜 License
-
-This project is licensed under the [MIT License](LICENSE).
