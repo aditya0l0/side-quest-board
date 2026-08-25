@@ -50,7 +50,7 @@ pipeline {
         // ── Deployment target ─────────────────────────────────────────────────
         string(
             name: 'EC2_HOST',
-            defaultValue: '16.171.34.41',
+            defaultValue: '13.61.111.131',
             description: 'Public IP of the EC2 instance to deploy to (overridable per-run)'
         )
         // ── Webhook trigger context (empty when triggered manually) ──────────

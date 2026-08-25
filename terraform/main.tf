@@ -9,12 +9,12 @@
 #   - aws_eip_association  — binds the EIP to the EC2 instance
 #
 # ── IMPORTING THE EXISTING INSTANCE ─────────────────────────────────────────
-# The instance at 16.171.34.41 was created manually. To bring it under
+# The instance at 13.61.111.131 was created manually. To bring it under
 # Terraform management without destroying it, run once:
 #
 #   # 1. Find the Instance ID from the AWS console or:
 #   aws ec2 describe-instances \
-#     --filters "Name=ip-address,Values=16.171.34.41" \
+#     --filters "Name=ip-address,Values=13.61.111.131" \
 #     --query 'Reservations[0].Instances[0].InstanceId' \
 #     --output text
 #
@@ -26,7 +26,7 @@
 #
 #   # 3. Find the Allocation ID of the Elastic IP (if one exists):
 #   aws ec2 describe-addresses \
-#     --public-ips 16.171.34.41 \
+#     --public-ips 13.61.111.131 \
 #     --query 'Addresses[0].AllocationId' \
 #     --output text
 #
@@ -171,7 +171,7 @@ resource "aws_instance" "sidequest" {
 # ── Elastic IP ────────────────────────────────────────────────────────────────
 # The EIP stays fixed even when the EC2 instance is replaced (e.g. after
 # `terraform apply -var ami_id=<new-golden-ami>`). This means:
-#   - The DNS name (16.171.34.41) stays the same
+#   - The DNS name (13.61.111.131) stays the same
 #   - Jenkins parameter EC2_HOST never needs to be updated
 #   - Ansible inventory stays correct
 resource "aws_eip" "sidequest" {
