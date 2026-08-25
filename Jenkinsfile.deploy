@@ -44,7 +44,7 @@ pipeline {
         )
         string(
             name: 'EC2_HOST',
-            defaultValue: '16.171.34.41',
+            defaultValue: '13.61.111.131',
             description: 'Public IP address of the target EC2 instance'
         )
         // ── Webhook trigger context (forwarded by master, empty when manual) ──

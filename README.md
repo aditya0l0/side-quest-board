@@ -1,341 +1,486 @@
 # ⚔️ The Side-Quest Board
 
-Turn your daily habits and to-dos into RPG-style side-quests. Earn XP, level up, and conquer your day one quest at a time.
+[![Java](https://img.shields.io/badge/Java-17%2B-orange?logo=openjdk)](https://www.oracle.com/java/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-brightgreen?logo=springboot)](https://spring.io/projects/spring-boot)
+[![React](https://img.shields.io/badge/React-18-blue?logo=react)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-5.x-purple?logo=vite)](https://vitejs.dev/)
+[![MySQL](https://img.shields.io/badge/MySQL-8.0%2B-blue?logo=mysql)](https://www.mysql.com/)
+[![Docker](https://img.shields.io/badge/Docker-27%2B-blue?logo=docker)](https://www.docker.com/)
+[![Jenkins](https://img.shields.io/badge/Jenkins-CI%2FCD-red?logo=jenkins)](https://www.jenkins.io/)
+[![Ansible](https://img.shields.io/badge/Ansible-Automation-black?logo=ansible)](https://www.ansible.com/)
+[![Terraform](https://img.shields.io/badge/Terraform-1.9%2B-623CE4?logo=terraform)](https://www.terraform.io/)
+[![Packer](https://img.shields.io/badge/Packer-1.11%2B-02A8EF?logo=packer)](https://www.packer.io/)
+[![AWS](https://img.shields.io/badge/AWS-EC2%20%7C%20EIP-232F3E?logo=amazon-aws)](https://aws.amazon.com/)
+
+> **Turn your daily habits and to-dos into RPG-style side-quests.**  
+> Earn XP, level up, and conquer your day one quest at a time — powered by a full-stack Spring Boot + React architecture, automated multi-job Jenkins CI/CD, GitOps-driven infrastructure lifecycle, and immutable golden AMI provisioning.
+
+---
+
+## 📑 Table of Contents
+
+- [🎮 Features & RPG Mechanics](#-features--rpg-mechanics)
+- [🏗️ System Architecture & Structure](#️-system-architecture--structure)
+- [📋 Prerequisites](#-prerequisites)
+- [🚀 Local Development Quickstart](#-local-development-quickstart)
+  - [Option A: Full-Stack with Docker Compose](#option-a-full-stack-with-docker-compose)
+  - [Option B: Bare-Metal / Manual Run](#option-b-bare-metal--manual-run)
+- [📡 REST API Specification](#-rest-api-specification)
+- [🎨 Visual Theme & Design](#-visual-theme--design)
+- [🔧 Continuous Integration & Delivery (CI/CD)](#-continuous-integration--delivery-cicd)
+  - [Pipeline Topology (`sidequest-master`)](#pipeline-topology-sidequest-master)
+  - [Gating Logic & Stage Matrix](#gating-logic--stage-matrix)
+  - [Trigger Modes & ChatOps Webhooks](#trigger-modes--chatops-webhooks)
+  - [Job Specifications](#job-specifications)
+- [☁️ Infrastructure as Code & Golden AMI (Terraform & Packer)](#️-infrastructure-as-code--golden-ami-terraform--packer)
+  - [Architecture & Immutable Infra Model](#architecture--immutable-infra-model)
+  - [Infrastructure Pipeline (`Jenkinsfile.infra`)](#infrastructure-pipeline-jenkinsfileinfra)
+  - [Manual Terraform & Packer Workflows](#manual-terraform--packer-workflows)
+- [⚙️ Server Provisioning & Configuration (Ansible)](#️-server-provisioning--configuration-ansible)
+- [🔐 Credentials & Secrets Management](#-credentials--secrets-management)
+- [🧪 Testing & Quality Assurance](#-testing--quality-assurance)
+
+---
+
+## 🎮 Features & RPG Mechanics
+
+- **Quest Lifecycle Management:**
+  - `ACTIVE` — In-progress quests that can be dynamically updated or completed.
+  - `COMPLETED` — Quests completed and locked from edits; awards XP to lifetime total.
+  - `ABANDONED` — Soft-deleted quests preserved in history without permanent record loss.
+- **Server-Authoritative XP Calculation:**
+  - XP rewards are strictly calculated on the backend to prevent client-side manipulation:
+    - 🥉 **BRONZE:** `10 XP`
+    - 🥈 **SILVER:** `25 XP`
+    - 🥇 **GOLD:** `50 XP`
+- **Dynamic Level Progression:**
+  - `Level = Floor(Lifetime XP / 100) + 1`
+  - HUD displays dynamic progress bars and percentage till next level.
+- **Date & Streak Tracking:**
+  - View daily quests by specific dates with seamless calendar switching (default: today).
+- **Responsive RPG HUD:**
+  - Glassmorphic retro RPG cards, pixel art headers, real-time completion pulse animations, and interactive toast notifications.
+
+---
+
+## 🏗️ System Architecture & Structure
+
+```
+side-quest-board/
+├── backend/                          # Java 17 + Spring Boot 3.x REST API
+│   ├── src/main/java/com/sidequest/board/
+│   │   ├── config/                   # CORS and Web MVC configuration
+│   │   ├── controller/               # REST Endpoints (QuestController)
+│   │   ├── dto/                      # Request/Response DTO contracts
+│   │   ├── entity/                   # JPA Entities (Quest, Difficulty, QuestStatus)
+│   │   ├── exception/                # Global exception handler & custom exceptions
+│   │   ├── repository/               # Spring Data JPA Repositories
+│   │   └── service/                  # Business Logic Layer
+│   ├── src/main/resources/           # application.properties & SQL schemas
+│   ├── pom.xml                       # Maven build configuration & dependencies
+│   └── checkstyle.xml                # Checkstyle lint rules
+├── frontend/                         # React 18 + Vite Frontend
+│   ├── src/
+│   │   ├── api/questApi.js           # Axios API client (relative `/api` base)
+│   │   ├── components/               # Modular UI Components
+│   │   │   ├── QuestBoard.jsx        # Main orchestrator view
+│   │   │   ├── XPCounter.jsx         # HUD XP & Level progress bar
+│   │   │   ├── NewQuestForm.jsx      # Quest creation interface
+│   │   │   ├── QuestList.jsx         # Active & completed quest accordion
+│   │   │   ├── QuestCard.jsx         # Individual quest item with action buttons
+│   │   │   ├── DifficultyBadge.jsx   # Tier-colored difficulty badge
+│   │   │   └── Toast.jsx             # Action notifications
+│   │   ├── App.jsx                   # Root React component
+│   │   ├── main.jsx                  # React entrypoint
+│   │   └── index.css                 # Dark fantasy glassmorphism theme
+│   ├── index.html                    # HTML entrypoint ("Press Start 2P" font)
+│   └── vite.config.js                # Vite config & dev reverse proxy (`/api` -> 8080)
+├── webhook-server/                   # Express.js GitHub Webhook / ChatOps Gateway
+│   ├── server.js                     # GitHub Issue labels & PR comment event handler
+│   ├── package.json                  # Node.js dependencies
+│   └── .env.example                  # Environment variables template
+├── ansible/                          # Server Provisioning & Deployment Playbooks
+│   ├── deploy.yml                    # App container continuous deployment playbook
+│   ├── provision.yml                 # Server bootstrap playbook (Docker, Nginx, UFW)
+│   ├── inventory.ini                 # Dynamic inventory (runtime host injection)
+│   ├── ansible.cfg                   # SSH connection & playbook defaults
+│   ├── group_vars/webservers.yml     # Variable defaults (ports, directory paths)
+│   └── templates/                    # Jinja2 templates (docker-compose, Nginx site)
+├── terraform/                        # AWS Infrastructure as Code (Terraform 1.9+)
+│   ├── main.tf                       # EC2 Instance, Security Group, and Elastic IP
+│   ├── variables.tf                  # Region, Instance Type, AMI ID, SSH CIDR definitions
+│   ├── outputs.tf                    # Public IP and Instance ID outputs
+│   ├── backend.tf                    # Local backend (S3 migration guide included)
+│   ├── terraform.tfvars              # Git-tracked non-secret variable values
+│   └── terraform.tfvars.example      # Example variable template
+├── packer/                           # Golden AMI Builder (Packer 1.11+)
+│   ├── sidequest-ami.pkr.hcl         # HCL2 AMI template invoking Ansible provisioner
+│   ├── variables.pkr.hcl             # Packer input variables
+│   └── localhost.ini                 # Static inventory for local AMI provisioning
+├── scripts/                          # DevOps & Maintenance Scripts
+│   ├── terraform_import.sh           # Import existing AWS resources into Terraform state
+│   └── ec2_cleanup.sh                # Utility to clean old snap revisions & docker cache
+├── Jenkinsfile                       # Master CI/CD Pipeline Orchestrator (sidequest-master)
+├── Jenkinsfile.lint                  # Linting downstream stage (Checkstyle + oxlint)
+├── Jenkinsfile.test                  # Unit & Integration test downstream stage (Surefire + Vitest)
+├── Jenkinsfile.build                 # Docker image build & registry push stage
+├── Jenkinsfile.deploy                # Ansible continuous deployment to EC2 stage
+├── Jenkinsfile.infra                 # 10-Stage Golden AMI & Infrastructure Pipeline
+└── docker-compose.yml                # Local orchestration for Full Stack + Webhook Server
+```
 
 ---
 
 ## 📋 Prerequisites
 
-| Tool | Version |
-|------|---------|
-| Java | 17+ |
-| Maven | 3.8+ |
-| Node.js | 18+ |
-| MySQL | 8.0+ |
+| Tool / Technology | Minimum Version | Purpose |
+|-------------------|-----------------|---------|
+| **Java (JDK)** | `17+` (Eclipse Temurin) | Backend service runtime & compilation |
+| **Maven** | `3.8+` | Backend dependency management & testing |
+| **Node.js** | `18+` (LTS) | Frontend & Webhook Server runtime |
+| **MySQL Server** | `8.0+` | Relational database storage |
+| **Docker & Compose** | `24+` / Compose v2 | Containerisation & local orchestration |
+| **Terraform** | `1.9+` | Cloud Infrastructure as Code |
+| **Packer** | `1.11+` | Automated Golden AMI generation |
+| **Ansible** | `2.15+` / `ansible-core 9+` | Host configuration & container deployment |
+| **AWS CLI** | `2.x` | AWS cloud authentication and verification |
 
 ---
 
-## 🗄️ Database Setup
+## 🚀 Local Development Quickstart
 
-1. Start your MySQL server.
-2. Create the database:
+### Option A: Full-Stack with Docker Compose
 
+Spin up the entire application ecosystem (MySQL, Backend, Frontend, and Webhook Server) in one command:
+
+1. **Configure Webhook Server environment:**
+   ```bash
+   cp webhook-server/.env.example webhook-server/.env
+   # Edit webhook-server/.env with your secrets (or leave defaults for local mock)
+   ```
+
+2. **Launch all containers:**
+   ```bash
+   docker compose up --build -d
+   ```
+
+3. **Access Services:**
+   - 🌐 **Frontend:** [http://localhost](http://localhost) (Port `80`)
+   - ⚙️ **Backend REST API:** [http://localhost:8080](http://localhost:8080) (Port `8080`)
+   - 🪝 **Webhook Server:** [http://localhost:3000](http://localhost:3000) (Port `3000`)
+   - 🗄️ **MySQL Database:** `localhost:3307` (`root` / `aditya123123`)
+
+---
+
+### Option B: Bare-Metal / Manual Run
+
+#### 1. Database Initialization
+Start your local MySQL service and run:
 ```sql
 CREATE DATABASE IF NOT EXISTS sidequest_board
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 ```
 
-3. Update credentials in `backend/src/main/resources/application.properties` if your MySQL username/password differ from `root`/`root`.
-
----
-
-## 🐳 Running with Docker Compose
-
-You can run the entire stack (Database, Backend, Frontend, and Webhook Server) locally using Docker Compose:
-
-```bash
-docker-compose up --build -d
-```
-
-The services will be exposed as follows:
-- **Frontend**: http://localhost
-- **Backend API**: http://localhost:8080
-- **Webhook Server**: http://localhost:3000
-- **MySQL Database**: localhost:3307
-
----
-
-## 🚀 Running the Backend
-
+#### 2. Start the Backend API
 ```bash
 cd backend
-mvn spring-boot:run
+mvn clean spring-boot:run
 ```
+*API runs on `http://localhost:8080` with auto-migration of JPA tables.*
 
-The API will be available at **http://localhost:8080**.
-
-### API Endpoints
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| `POST` | `/api/quests` | Create a new quest |
-| `GET` | `/api/quests?date=YYYY-MM-DD` | Get quests for a date (default: today) |
-| `GET` | `/api/quests/xp-total` | Get lifetime XP total |
-| `PUT` | `/api/quests/{id}` | Edit quest (only if ACTIVE) |
-| `PATCH` | `/api/quests/{id}/complete` | Claim XP — mark quest completed |
-| `PATCH` | `/api/quests/{id}/abandon` | Abandon quest (soft delete) |
-
-### Create Quest Example
-
-```bash
-curl -X POST http://localhost:8080/api/quests \
-  -H "Content-Type: application/json" \
-  -d '{"title": "Read 5 pages of a design book", "difficulty": "SILVER"}'
-```
-
----
-
-## 🎮 Running the Frontend
-
+#### 3. Start the Frontend Dev Server
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+*Frontend runs on `http://localhost:5173`. Vite automatically proxies `/api` calls to `http://localhost:8080`.*
 
-The app will be available at **http://localhost:5173**.
-
----
-
-## 🏗️ Architecture
-
-```text
-side-quest-board/
-├── backend/                          # Spring Boot 3.x (Java 17)
-│   └── src/main/java/com/sidequest/board/
-│       ├── config/                   # CORS configuration
-│       ├── controller/               # REST endpoints
-│       ├── dto/                      # Request/Response DTOs
-│       ├── entity/                   # JPA entities & enums
-│       ├── exception/                # Global error handling
-│       ├── repository/               # Spring Data JPA repos
-│       ├── service/                  # Business logic layer
-│       └── SideQuestBoardApplication.java
-├── frontend/                         # React 18 (Vite)
-│   └── src/
-│       ├── api/questApi.js           # Axios API client
-│       ├── components/               # React components
-│       │   ├── QuestBoard.jsx        # Main orchestrator
-│       │   ├── XPCounter.jsx         # HUD-style XP display
-│       │   ├── NewQuestForm.jsx      # Quest creation form
-│       │   ├── QuestList.jsx         # Active/Completed sections
-│       │   ├── QuestCard.jsx         # Individual quest card
-│       │   ├── DifficultyBadge.jsx   # Tier-colored badge
-│       │   └── Toast.jsx             # XP notification toasts
-│       ├── App.jsx
-│       ├── main.jsx
-│       └── index.css                 # Design system & styles
-└── webhook-server/                   # Node.js Express webhook listener
-    ├── server.js                     # GitHub → Jenkins orchestrator
-    └── .env.example                  # Environment variables template
+#### 4. (Optional) Start the Webhook Server
+```bash
+cd webhook-server
+npm install
+cp .env.example .env
+node server.js
 ```
 
 ---
 
-## 🎯 Key Business Rules
+## 📡 REST API Specification
 
-- **XP is server-controlled**: Derived from difficulty (Bronze=10, Silver=25, Gold=50). The client cannot inject XP values.
-- **Completed quests are locked**: Editing title/description/difficulty is only allowed while status is ACTIVE.
-- **Soft delete**: Abandoning a quest sets `status = ABANDONED` rather than deleting the row.
-- **Lifetime XP**: Only COMPLETED quests count toward the total.
-- **Levels**: Every 100 XP = 1 level (displayed in the HUD).
+| HTTP Method | Endpoint | Description | Request Body / Parameters | Response Status |
+|:---|:---|:---|:---|:---|
+| `POST` | `/api/quests` | Create a new quest | `{"title": "...", "description": "...", "difficulty": "BRONZE\|SILVER\|GOLD"}` | `201 Created` |
+| `GET` | `/api/quests` | Get quests for a date | `?date=YYYY-MM-DD` *(optional, defaults to current date)* | `200 OK` |
+| `GET` | `/api/quests/xp-total` | Get lifetime accumulated XP | *None* | `200 OK` (JSON integer) |
+| `PUT` | `/api/quests/{id}` | Update quest details | `{"title": "...", "description": "...", "difficulty": "..."}` *(only allowed if `ACTIVE`)* | `200 OK` |
+| `PATCH` | `/api/quests/{id}/complete` | Mark quest as completed & award XP | *None* | `200 OK` |
+| `PATCH` | `/api/quests/{id}/abandon` | Abandon quest (soft delete) | *None* | `200 OK` |
+
+### Example: Create a Quest
+```bash
+curl -X POST http://localhost:8080/api/quests \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Slay the Refactoring Dragon",
+    "description": "Refactor legacy controller into clean service layers",
+    "difficulty": "GOLD"
+  }'
+```
 
 ---
 
-## 🎨 Visual Theme
+## 🎨 Visual Theme & Design
 
-- Dark fantasy RPG aesthetic with glassmorphism card effects
-- Tier-colored badges and card borders (Bronze / Silver / Gold)
-- "Press Start 2P" pixel font for headings
-- Pulse animations on XP changes
-- Slide-in card animations and completion flash effects
-- Floating toast notifications for quest actions
+The frontend implements a dark fantasy RPG aesthetic inspired by classic 8-bit and 16-bit role-playing games:
+- **Typography:** Google Fonts `"Press Start 2P"` for 8-bit headers and retro HUD elements.
+- **Glassmorphic HUD:** Translucent backdrops, subtle glow borders, and tiered color palettes:
+  - 🥉 **Bronze:** `#cd7f32` / Amber glow
+  - 🥈 **Silver:** `#c0c0c0` / Slate crystal glow
+  - 🥇 **Gold:** `#ffd700` / Radiant solar flare
+- **Micro-Animations:** Pure CSS XP pulse counters, smooth card entrance transitions, and completion flash states.
 
 ---
 
-## 🔧 CI/CD Pipeline
+## 🔧 Continuous Integration & Delivery (CI/CD)
 
-The project uses a **Jenkins multi-job pipeline** composed of one master orchestrator and four downstream specialist jobs. All jobs run inside isolated Docker containers (Docker-outside-of-Docker pattern) and share a single ephemeral Docker bridge network per build.
+The CI/CD workflow uses a **Jenkins multi-job architecture** executed inside Docker containers (**Docker-outside-of-Docker / DooD** pattern). Each run creates an isolated ephemeral Docker bridge network (`sidequest-ci-<BUILD_NUMBER>`).
 
-### Pipeline Overview
+### Pipeline Topology (`sidequest-master`)
 
 ```
 sidequest-master  (Jenkinsfile)
 │
 ├── [always]    Trigger Lint   →  sidequest-lint   (Jenkinsfile.lint)
-│                                    ├─ Lint Backend  (Checkstyle via maven:3.9.7-eclipse-temurin-17)
-│                                    └─ Lint Frontend (oxlint via node:20-alpine)
+│                                    ├─ Backend: Checkstyle (maven:3.9.7-eclipse-temurin-17)
+│                                    └─ Frontend: oxlint (node:20-alpine)
 │
 ├── [lint pass] Trigger Test   →  sidequest-test   (Jenkinsfile.test)
-│                                    ├─ Test Backend  (Maven/H2 in-memory DB)
-│                                    └─ Test Frontend (Vitest via node:20-alpine)
+│                                    ├─ Backend: Maven Surefire + H2 DB
+│                                    └─ Frontend: Vitest Component Tests
 │
 ├── [test !fail] Trigger Build →  sidequest-build  (Jenkinsfile.build)
-│                                    └─ Build & Push Docker images to Docker Hub
-│                                         aditya0l0/sidequest-backend:<build#>
-│                                         aditya0l0/sidequest-frontend:<build#>
+│                                    └─ Docker Build & Push to Docker Hub:
+│                                         • aditya0l0/sidequest-backend:<build#>
+│                                         • aditya0l0/sidequest-frontend:<build#>
 │
 └── [build pass] Trigger Deploy → sidequest-deploy (Jenkinsfile.deploy)
-                                     └─ Ansible playbook → EC2 instance
+                                     └─ Ansible Playbook (deploy.yml) → EC2 Target
                                           (cytopia/ansible:latest-tools)
 ```
 
-### Stage Gating Logic (Full Pipeline)
+---
 
-| Stage result | Effect on next stage |
-|---|---|
-| Lint **FAILURE** | Test and Build are **skipped**; master marked FAILURE |
-| Lint **SUCCESS** | Test is triggered |
-| Test **UNSTABLE** | Build still runs; master marked UNSTABLE |
-| Test **FAILURE** | Build is **skipped**; master marked FAILURE |
-| Test **SUCCESS** | Build is triggered |
-| Build **FAILURE** | Deploy is **skipped**; master marked FAILURE |
-| Build **SUCCESS** | Deploy is triggered (if requested) |
+### Gating Logic & Stage Matrix
 
-> Gating only applies when `PIPELINE_STAGES=all`. Partial runs (e.g. `lint,test`) execute the requested stages **independently** with no cross-stage gating.
+When `PIPELINE_STAGES=all`, strict failure gates protect downstream environments:
 
-### Trigger Modes
-
-The master job (`Jenkinsfile`) accepts three trigger sources via the `TRIGGERED_BY` parameter:
-
-| `TRIGGERED_BY` value | Source | PR checkout behaviour |
+| Stage Status | Master Pipeline Action | Downstream Impact |
 |---|---|---|
-| `manual` | Jenkins UI | Uses default branch |
-| `github-issue-webhook` | GitHub Issue webhook | Uses default branch |
-| `github-pr-webhook` | GitHub PR opened/updated | Checks out PR head commit (`GITHUB_PR_SHA`) |
-| `github-comment-webhook` | GitHub PR comment webhook | Checks out PR head commit (`GITHUB_PR_SHA`) |
+| Lint **FAILURE** | Aborts Pipeline as `FAILURE` | Test, Build, and Deploy are **skipped** |
+| Lint **SUCCESS** | Proceeds | Triggers `sidequest-test` |
+| Test **UNSTABLE** | Marks Pipeline `UNSTABLE` | Build proceeds; Deploy triggered if requested |
+| Test **FAILURE** | Aborts Pipeline as `FAILURE` | Build and Deploy are **skipped** |
+| Build **FAILURE** | Aborts Pipeline as `FAILURE` | Deploy is **skipped** |
+| Build **SUCCESS** | Proceeds | Triggers `sidequest-deploy` |
 
-After every webhook-triggered run, the master posts a formatted Markdown CI report as a comment on the originating GitHub Issue or Pull Request (via the `github-pat-issue-comment` credential).
-
-#### Webhook Server (`webhook-server/`)
-
-The repository includes a custom Node.js Express webhook server that translates GitHub events into parameterized Jenkins builds:
-- **Issue Labels:** Applies `ci:lint`, `ci:test`, `ci:build`, or `ci:all` labels to trigger the corresponding pipeline stages. Events are debounced for 15 seconds to allow batching multiple labels into a single Jenkins trigger.
-- **PR Comments:** Listens for slash commands (e.g., `/lint`, `/test`, `/build`, `/all`) in PR comments to trigger builds on PR branches.
-- **PR Events:** Automatically triggers full `all` pipeline on PR open/synchronize/reopen against `main`.
-
-### Selective Stage Execution
-
-Set the `PIPELINE_STAGES` parameter on `sidequest-master` to run only the stages you need:
-
-| Value | Stages run |
-|---|---|
-| `all` *(default)* | lint → test → build → deploy |
-| `lint` | lint only |
-| `test` | test only |
-| `build` | build only |
-| `deploy` | deploy only |
-| `lint,test` | lint + test |
-| `test,build` | test + build |
-| `build,deploy` | build + deploy |
-
-### Job Reference
-
-#### `sidequest-master` — `Jenkinsfile`
-
-The sole entry point for the CI system.
-
-- **Timeout:** 60 minutes
-- **Concurrency:** disabled (`disableConcurrentBuilds`)
-- **Network:** creates `sidequest-ci-<BUILD_NUMBER>` Docker bridge at start; destroys it in `post.always`
-- **Logs kept:** last 10 builds
-- **Post-run:** always emits a pipeline summary; posts a GitHub comment on webhook-triggered runs
-
-#### `sidequest-lint` — `Jenkinsfile.lint`
-
-Runs both linters sequentially; either failure marks the job FAILURE.
-
-- **Timeout:** 10 minutes
-- **Backend linter:** Checkstyle (`mvn checkstyle:check`) — image `maven:3.9.7-eclipse-temurin-17`
-- **Frontend linter:** oxlint (`npm run lint`) — image `node:20-alpine`
-- **Network isolation:** each container joined to `PIPELINE_NETWORK`
-
-#### `sidequest-test` — `Jenkinsfile.test`
-
-Runs unit tests for both services. Test failures produce **UNSTABLE** (not FAILURE) so the Build job can still run.
-
-- **Timeout:** 15 minutes
-- **Backend tests:** Maven Surefire (`mvn test`) with H2 in-memory database — image `maven:3.9.7-eclipse-temurin-17`
-- **Frontend tests:** Vitest (`npm test -- --run`) — image `node:20-alpine`
-- **Test reports:** JUnit XML results from `backend/target/surefire-reports/*.xml` are published to the job's build page
-- **Failure mode:** `catchError(buildResult: 'UNSTABLE')` — a test failure marks the stage UNSTABLE rather than aborting
-
-#### `sidequest-build` — `Jenkinsfile.build`
-
-Builds and pushes Docker images to Docker Hub using the Docker-outside-of-Docker (DooD) pattern.
-
-- **Timeout:** 20 minutes
-- **Worker image:** `docker:27-cli` (mounts `/var/run/docker.sock`)
-- **Image tags:** `aditya0l0/sidequest-backend:<UPSTREAM_BUILD_NUMBER>` and `aditya0l0/sidequest-frontend:<UPSTREAM_BUILD_NUMBER>`
-- **Credentials required:** `docker-hub-credentials` (username + password)
-- **Steps:** login → build backend → build frontend → push backend → push frontend
-
-#### `sidequest-deploy` — `Jenkinsfile.deploy`
-
-Deploys the images built in the previous stage to an EC2 instance via Ansible.
-
-- **Timeout:** 20 minutes (accounts for Docker install + image pulls + MySQL + Spring Boot cold start)
-- **Worker image:** `cytopia/ansible:latest-tools` (Ansible, OpenSSH, and `community.docker` collection pre-baked)
-- **Ansible config:** `ansible/ansible.cfg`; playbook: `ansible/deploy.yml`
-- **EC2 target:** controlled by the `EC2_HOST` parameter (default: `16.171.34.41`)
-- **Silent-failure guards:** the log is captured and grepped for three Ansible failure signatures even when exit code is 0:
-  - `skipping: no hosts matched` → inventory parse error
-  - `UNREACHABLE` → SSH / network failure
-  - `FAILED!` → individual task failure
-- **Post-run:** archives `ansible-deploy-<BUILD_NUMBER>.log` as a build artifact
-
-### Required Jenkins Credentials
-
-| Credential ID | Type | Used by |
-|---|---|---|
-| `docker-hub-credentials` | Username + Password | sidequest-build, sidequest-deploy |
-| `ec2-ssh-key` | SSH private key | sidequest-deploy |
-| `sidequest-db-password` | Secret text | sidequest-deploy |
-| `github-pat-issue-comment` | Secret text (PAT) | sidequest-master (GitHub comments) |
-
-### Docker Network Strategy
-
-Each master build creates a uniquely named bridge network (`sidequest-ci-<BUILD_NUMBER>`). All downstream worker containers are attached to this network, providing build isolation and allowing inter-container communication without exposing ports to the host. The network is unconditionally removed in the master's `post.always` block.
+> *Tip: Selective execution (`PIPELINE_STAGES=lint,test` or `test,build`) runs selected jobs independently without full pipeline gating.*
 
 ---
 
-## ⚙️ Server Provisioning & Deployment (Ansible)
+### Trigger Modes & ChatOps Webhooks
 
-The project includes Ansible playbooks to automate the provisioning of a raw EC2 instance and the continuous deployment of the application stack.
+The master pipeline accepts multi-source triggers via `TRIGGERED_BY`:
 
-### Directory Structure
+| `TRIGGERED_BY` Mode | Trigger Source | Git Checkout Strategy |
+|:---|:---|:---|
+| `manual` | Jenkins UI Execution | Active configured branch (`feature-jenkins` or `main`) |
+| `github-issue-webhook` | GitHub Issue Labels | Target default branch |
+| `github-pr-webhook` | Pull Request Opened / Synchronized | PR Head SHA commit (`GITHUB_PR_SHA`) |
+| `github-comment-webhook` | PR Comment Slash Commands | PR Head SHA commit (`GITHUB_PR_SHA`) |
 
-- `ansible/`: Production-ready playbooks for the application.
-- `ansible-demo/`: A simple demonstration playbook that sets up a basic Nginx web server with a custom "Ansible Success" HTML page.
+#### Webhook Server ChatOps Integration (`webhook-server/`)
+- **Issue Label Dispatcher:** Adding labels like `ci:lint`, `ci:test`, `ci:build`, or `ci:all` debounces events for 15 seconds to merge multi-label edits into a single pipeline invocation.
+- **PR Slash Commands:** Commenting `/lint`, `/test`, `/build`, or `/all` triggers targeted builds directly from PR discussions.
+- **Automated Feedback:** Pipeline completion formats and posts comprehensive Markdown CI summary reports directly as comments on the originating GitHub PR/Issue using GitHub API authentication (`github-pat-issue-comment`).
 
-### Provisioning (`ansible/provision.yml`)
+---
 
-A one-time setup playbook designed to bootstrap a fresh Ubuntu EC2 instance. It handles:
-- Updating the system and installing prerequisites.
-- Installing Docker Engine and the Docker Compose plugin.
-- Installing Nginx.
-- Configuring the UFW firewall (allowing ports 22, 80, and 443).
-- Creating the application directory (`/opt/sidequest`).
+### Job Specifications
 
-**Usage (manual):**
+#### 1. `sidequest-master` (`Jenkinsfile`)
+- Central orchestration coordinator.
+- Generates ephemeral Docker bridge network per run.
+- Formats CI execution metrics and posts GitHub feedback comments.
+
+#### 2. `sidequest-lint` (`Jenkinsfile.lint`)
+- Runs `mvn checkstyle:check` for Java source rules.
+- Runs `npm run lint` (`oxlint`) for frontend JSX/JS standards.
+
+#### 3. `sidequest-test` (`Jenkinsfile.test`)
+- Runs backend Surefire unit/integration tests with in-memory H2 database.
+- Runs Vitest component unit test suites.
+- Captures and archives JUnit XML test results.
+
+#### 4. `sidequest-build` (`Jenkinsfile.build`)
+- Connects to `/var/run/docker.sock`.
+- Builds production-optimized multi-stage Docker images.
+- Pushes uniquely tagged build images (`:<BUILD_NUMBER>`) and `:latest` tags to Docker Hub.
+
+#### 5. `sidequest-deploy` (`Jenkinsfile.deploy`)
+- Executes containerized Ansible (`cytopia/ansible:latest-tools`).
+- Connects to the target EC2 instance (default: `13.61.111.131`).
+- Deploys container stack via Docker Compose, sets up Nginx reverse proxy, and validates `/health` endpoints.
+
+---
+
+## ☁️ Infrastructure as Code & Golden AMI (Terraform & Packer)
+
+The project adheres to an **Immutable Infrastructure** strategy on AWS:
+
+```
+                  ┌────────────────────────────────────────┐
+                  │          AWS Cloud (eu-north-1)        │
+                  │                                        │
+                  │  ┌──────────────────────────────────┐  │
+                  │  │ aws_eip.sidequest                │  │
+                  │  │ (13.61.111.131)                  │  │
+                  │  └───────────────┬──────────────────┘  │
+                  │                  │ (bound via EIP Assoc)
+                  │                  ▼                     │
+                  │  ┌──────────────────────────────────┐  │
+                  │  │ aws_instance.sidequest           │  │
+                  │  │ (t3.small / 20GB gp3 EBS)        │  │
+                  │  │ Launched from: var.ami_id        │  │
+                  │  └───────────────┬──────────────────┘  │
+                  │                  │                     │
+                  │  ┌───────────────▼──────────────────┐  │
+                  │  │ aws_security_group.sidequest     │  │
+                  │  │ Inbound: 22 (SSH), 80, 443       │  │
+                  │  └──────────────────────────────────┘  │
+                  └────────────────────────────────────────┘
+```
+
+---
+
+### Infrastructure Pipeline (`Jenkinsfile.infra`)
+
+The `sidequest-infra` pipeline automates the complete provisioning and Golden AMI lifecycle through 10 deterministic stages:
+
+```
+[1] TF Init & Validate  ──►  [2] TF Plan  ──►  [3] TF Apply (Base EC2)
+                                                        │
+[6] Packer Bake Golden AMI ◄── [5] Ansible Provision ◄── [4] Wait for EC2 SSH
+            │
+            ▼
+[7] TF Apply (Golden AMI) ──► [8] Commit AMI ID to Git ──► [9] Smoke Test
+```
+
+1. **Terraform Init & Validate:** Initializes AWS provider plugins and checks HCL configuration syntax.
+2. **Terraform Plan:** Previews infrastructure state diff without making changes.
+3. **Terraform Apply (Base EC2):** Provisions base EC2 (`t3.small`), Security Group, and attaches Elastic IP.
+4. **Wait for EC2 SSH:** Polls SSH reachability using an explicit sentinel verification loop.
+5. **Ansible Provision:** Bootstraps base instance with Docker Engine, Docker Compose, Nginx, and UFW firewall.
+6. **Packer Bake Golden AMI:** Launches builder instance, executes `ansible/provision.yml` via `ansible-local`, captures EBS snapshot, and outputs Golden AMI ID.
+7. **Terraform Apply (Golden AMI):** Re-launches the live instance from the newly baked Golden AMI (Docker/Nginx pre-installed) and re-attaches the Elastic IP with zero public IP drift.
+8. **Commit AMI ID to Git:** Updates `terraform/terraform.tfvars` with the new `ami_id` and pushes to git using standard Git HTTP Basic Authorization headers (`http.extraheader`) and `--force-with-lease`.
+9. **Smoke Test:** Validates SSH access and checks HTTP status codes on the live Elastic IP.
+
+---
+
+### Manual Terraform & Packer Workflows
+
+#### Terraform Local Execution
 ```bash
-ansible-playbook -i ansible/inventory.ini ansible/provision.yml \
-  -e "ansible_host=<EC2_HOST>" \
+cd terraform
+terraform init
+terraform plan
+terraform apply
+```
+
+#### Importing Existing AWS Resources into State
+If you already have running AWS resources, use the automated import helper:
+```bash
+bash scripts/terraform_import.sh
+```
+
+#### Packer Golden AMI Manual Bake
+```bash
+cd packer
+packer init .
+packer validate .
+packer build -var "aws_region=eu-north-1" sidequest-ami.pkr.hcl
+```
+
+---
+
+## ⚙️ Server Provisioning & Configuration (Ansible)
+
+### Playbooks Reference
+
+- **`ansible/provision.yml` (Server Initialization):**
+  - Installs system packages, Docker CE, Docker Compose CLI plugin, and Nginx.
+  - Configures UFW firewall (Allows ports `22`, `80`, `443`).
+  - Creates deployment directory `/opt/sidequest`.
+
+- **`ansible/deploy.yml` (Continuous Deployment):**
+  - Pulls latest container images (`sidequest-backend:<BUILD_NUMBER>`, `sidequest-frontend:<BUILD_NUMBER>`).
+  - Renders templated `docker-compose.yml` and Nginx reverse proxy configurations.
+  - Launches container stack via Docker Compose with health checks.
+  - Restarts/reloads Nginx and verifies upstream `/health` endpoints.
+
+### Manual Playbook Execution
+```bash
+ansible-playbook -i ansible/inventory.ini ansible/deploy.yml \
+  -e "ansible_host=13.61.111.131" \
+  -e "docker_hub_user=your_user" \
+  -e "docker_hub_password=your_pass" \
+  -e "db_password=your_db_pass" \
+  -e "build_version=latest" \
   --private-key /path/to/ec2-key.pem
 ```
 
-### Deployment (`ansible/deploy.yml`)
+---
 
-The deployment playbook is executed automatically by the `sidequest-deploy` Jenkins pipeline after a successful build. It is idempotent and performs the following:
-- Cleans up dangling Docker images and volumes.
-- Verifies/installs dependencies.
-- Logs into Docker Hub using credentials injected by Jenkins.
-- Pulls the newly built backend and frontend images tagged with the Jenkins `build_version`.
-- Renders the `docker-compose.yml` and Nginx reverse proxy configurations using Jinja2 templates (`ansible/templates/`).
-- Deploys the stack using Docker Compose.
-- Performs health checks to ensure the API and frontend are successfully running.
+## 🔐 Credentials & Secrets Management
 
-### Configuration (`ansible/group_vars/webservers.yml`)
+All production secrets and keys are injected dynamically at runtime via Jenkins Credentials:
 
-Shared variables for the environment are managed here, including:
-- Application identity (`app_name`, `app_dir`).
-- Docker Hub repository configuration.
-- Port mappings for frontend (80), backend (8080), and database (3306).
-- Nginx configuration settings.
+| Credential ID | Jenkins Credential Type | Consumed By | Description / Purpose |
+|:---|:---|:---|:---|
+| `docker-hub-credentials` | Username with password | `sidequest-build`, `sidequest-deploy` | Docker Hub registry authentication |
+| `ec2-ssh-key` | SSH Username with private key | `sidequest-deploy`, `sidequest-infra` | Private key for EC2 instance access |
+| `sidequest-db-password` | Secret text | `sidequest-deploy` | Production MySQL root database password |
+| `github-pat-issue-comment` | Secret text | `sidequest-master` | GitHub PAT to post CI summary comments |
+| `aws-access-key-id` | Secret text | `sidequest-infra` | AWS Access Key ID for Terraform & Packer |
+| `aws-secret-access-key`| Secret text | `sidequest-infra` | AWS Secret Access Key for Terraform & Packer |
+| `github-pat` | Username with password | `sidequest-infra` | GitHub credentials to commit updated AMI IDs |
 
-*Note: Sensitive variables (e.g., `db_password`, `docker_hub_password`) are intentionally omitted from version control and injected at runtime via Jenkins credentials using the `-e` flag.*
+---
 
-### Utilities
+## 🧪 Testing & Quality Assurance
 
-- `ec2_cleanup.sh`: A utility script provided to clean up old snap revisions and free up disk space on the EC2 instance.
+### Backend Tests (Java / Spring Boot)
+- **Frameworks:** JUnit 5, Spring Boot Test, Mockito, AssertJ, H2 in-memory DB.
+- **Execution:**
+  ```bash
+  cd backend
+  mvn test
+  ```
+- **Linter Check:**
+  ```bash
+  mvn checkstyle:check
+  ```
+
+### Frontend Tests (React / JavaScript)
+- **Frameworks:** Vitest, React Testing Library, jsdom.
+- **Execution:**
+  ```bash
+  cd frontend
+  npm test -- --run
+  ```
+- **Linter Check:**
+  ```bash
+  npm run lint
+  ```

@@ -51,7 +51,7 @@ terraform apply
 
 ## Importing the Existing EC2 Instance
 
-The current instance at `16.171.34.41` was created manually. Use these steps
+The current instance at `13.61.111.131` was created manually. Use these steps
 to bring it under Terraform management **without destroying it**.
 
 ### Step 1 — Find resource IDs
@@ -59,7 +59,7 @@ to bring it under Terraform management **without destroying it**.
 ```bash
 # Instance ID
 aws ec2 describe-instances \
-  --filters "Name=ip-address,Values=16.171.34.41" \
+  --filters "Name=ip-address,Values=13.61.111.131" \
   --query 'Reservations[0].Instances[0].InstanceId' \
   --output text
 # → e.g. i-0abc1234def56789
@@ -73,7 +73,7 @@ aws ec2 describe-instances \
 
 # Elastic IP Allocation ID (if an EIP is already associated)
 aws ec2 describe-addresses \
-  --public-ips 16.171.34.41 \
+  --public-ips 13.61.111.131 \
   --query 'Addresses[0].AllocationId' \
   --output text
 # → e.g. eipalloc-0abc1234def56789
@@ -141,7 +141,7 @@ To migrate to S3 (recommended for teams), see the commented instructions in
 After `terraform apply`:
 
 ```bash
-terraform output ec2_public_ip    # → e.g. 16.171.34.41 (EIP)
+terraform output ec2_public_ip    # → e.g. 13.61.111.131 (EIP)
 terraform output ec2_instance_id  # → e.g. i-0abc1234def56789
 ```
 
